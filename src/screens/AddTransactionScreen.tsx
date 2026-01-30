@@ -1,0 +1,474 @@
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, FlatList, ScrollView, Image, Platform } from 'react-native';
+import { useSettingsStore } from '../store/useSettingsStore';
+import { DARK_THEME, LIGHT_THEME } from '../theme/colors';
+import { ScreenWrapper } from '../components/ScreenWrapper';
+import { X, Check, Wallet, Landmark, User, Plus, Calendar as CalendarIcon, FileText, Image as ImageIcon, ArrowUpRight, ArrowDownLeft } from 'lucide-react-native';
+import { getAccounts, addTransaction, Account, updateAccount } from '../db/database';
+import { getCategoryIcon } from '../utils/categoryIcons';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import * as ImagePicker from 'expo-image-picker';
+import { format } from 'date-fns';
+
+const EXPENSE_CATEGORIES = [
+    'Family', 'Travel', 'Rent', 'Food & Drink', 'Personal', 'Other Expenses',
+    'Bills', 'Education', 'Grocery', 'Fitness', 'Mobile', 'Donations'
+];
+
+const INCOME_CATEGORIES = [
+    'Salary', 'Bonus', 'Freelance', 'Other Income', 'Commission'
+];
+
+const TABS = ['Expense', 'Income', 'Transfer', 'People'];
+
+const AddTransactionScreen = ({ navigation }: any) => {
+    const { currency, theme, accentColor } = useSettingsStore();
+    const themeColors = theme === 'dark' ? DARK_THEME : LIGHT_THEME;
+
+    const [activeTab, setActiveTab] = useState('Expense');
+    const [subTab, setSubTab] = useState('Lend'); // For People: Pay, Receive, Lend, Borrow
+    const [amount, setAmount] = useState('');
+    const [selectedCategory, setSelectedCategory] = useState('');
+    const [selectedFromAccount, setSelectedFromAccount] = useState<number | null>(null);
+    const [selectedToAccount, setSelectedToAccount] = useState<number | null>(null);
+    const [accounts, setAccounts] = useState<Account[]>([]);
+    const [date, setDate] = useState(new Date());
+    const [showDatePicker, setShowDatePicker] = useState(false);
+    const [description, setDescription] = useState('');
+    const [receiptUri, setReceiptUri] = useState<string | null>(null);
+
+    useEffect(() => {
+        const accs = getAccounts();
+        setAccounts(accs);
+        if (accs.length > 0 && selectedFromAccount === null) {
+            setSelectedFromAccount(accs[0].id);
+        }
+    }, []);
+
+    const handleSave = () => {
+        const isPeople = activeTab === 'People';
+        const isTransfer = activeTab === 'Transfer';
+
+        if (!amount || (!selectedCategory && !isPeople && !isTransfer) || !selectedFromAccount) {
+            alert('Please fill all required fields');
+            return;
+        }
+
+        const numAmount = parseFloat(amount);
+        if (isNaN(numAmount)) return;
+
+        let transactionType = activeTab.toUpperCase();
+        let finalCategory = selectedCategory || activeTab;
+        let finalFromAccount = selectedFromAccount;
+        let finalToAccount = selectedToAccount;
+
+        if (activeTab === 'People') {
+            finalCategory = subTab;
+            if (subTab === 'Pay' || subTab === 'Lend') {
+                if (!selectedFromAccount || !selectedToAccount) {
+                    alert('Please select both your account and the person.');
+                    return;
+                }
+            } else if (subTab === 'Receive' || subTab === 'Borrow') {
+                if (!selectedFromAccount || !selectedToAccount) {
+                    alert('Please select both the person and your account.');
+                    return;
+                }
+                finalFromAccount = selectedToAccount;
+                finalToAccount = selectedFromAccount;
+            }
+        } else if (activeTab === 'Transfer') {
+            if (!selectedFromAccount || !selectedToAccount) {
+                alert('Please select both source and destination accounts.');
+                return;
+            }
+            const fromAcc = accounts.find(a => a.id === selectedFromAccount);
+            const toAcc = accounts.find(a => a.id === selectedToAccount);
+            if (fromAcc?.type === 'PERSON' || toAcc?.type === 'PERSON') {
+                finalCategory = subTab;
+            } else {
+                finalCategory = 'Transfer';
+            }
+        }
+
+        addTransaction(
+            numAmount,
+            transactionType,
+            finalCategory,
+            finalFromAccount,
+            finalToAccount || undefined,
+            description,
+            date.toISOString(),
+            receiptUri || undefined
+        );
+
+        navigation.goBack();
+    };
+
+    const pickReceipt = async () => {
+        const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ['images'],
+            allowsEditing: true,
+            quality: 0.8,
+        });
+
+        if (!result.canceled) {
+            setReceiptUri(result.assets[0].uri);
+        }
+    };
+
+    const renderAccountGridItem = (acc: Account, isSelected: boolean, onSelect: () => void) => (
+        <TouchableOpacity
+            key={acc.id}
+            onPress={onSelect}
+            style={[
+                styles.accountGridItem,
+                { backgroundColor: isSelected ? accentColor : themeColors.surface, borderColor: themeColors.border },
+                isSelected ? { borderColor: 'transparent' } : {}
+            ]}
+        >
+            <View style={[styles.accIconBox, { backgroundColor: isSelected ? 'rgba(255,255,255,0.2)' : themeColors.background }]}>
+                {acc.type === 'BANK' ? <Landmark size={14} color={isSelected ? 'white' : themeColors.text} /> :
+                    acc.type === 'CASH' ? <Wallet size={14} color={isSelected ? 'white' : themeColors.text} /> :
+                        <User size={14} color={isSelected ? 'white' : themeColors.text} />}
+            </View>
+            <Text style={[styles.accountGridName, { color: isSelected ? 'white' : themeColors.text }]}>{acc.name}</Text>
+        </TouchableOpacity>
+    );
+
+    const isPersonFlow = activeTab === 'People' || (activeTab === 'Transfer' && (accounts.find(a => a.id === selectedFromAccount)?.type === 'PERSON' || accounts.find(a => a.id === selectedToAccount)?.type === 'PERSON'));
+
+    return (
+        <ScreenWrapper>
+            <ScrollView showsVerticalScrollIndicator={false}>
+                <View style={styles.header}>
+                    <TouchableOpacity onPress={() => navigation.goBack()}>
+                        <X color={themeColors.text} size={28} />
+                    </TouchableOpacity>
+                    <Text style={[styles.headerTitle, { color: themeColors.text }]}>Add Transaction</Text>
+                    <View style={{ width: 28 }} />
+                </View>
+
+                <View style={[styles.tabs, { backgroundColor: themeColors.surface }]}>
+                    {TABS.map(tab => (
+                        <TouchableOpacity
+                            key={tab}
+                            onPress={() => {
+                                setActiveTab(tab);
+                                setSelectedCategory('');
+                            }}
+                            style={[styles.tab, activeTab === tab ? { backgroundColor: accentColor } : {}]}
+                        >
+                            <Text style={[styles.tabText, { color: activeTab === tab ? 'white' : themeColors.textSecondary }]}>{tab}</Text>
+                        </TouchableOpacity>
+                    ))}
+                </View>
+
+                <View style={styles.inputContainer}>
+                    <Text style={[styles.label, { color: themeColors.textSecondary }]}>Amount</Text>
+                    <View style={styles.amountInputRow}>
+                        <Text style={[styles.currencyPrefix, { color: themeColors.text }]}>{currency}</Text>
+                        <TextInput
+                            style={[styles.amountInput, { color: themeColors.text }]}
+                            placeholder="0"
+                            placeholderTextColor={themeColors.textSecondary}
+                            keyboardType="numeric"
+                            value={amount}
+                            onChangeText={setAmount}
+                        />
+                    </View>
+                </View>
+
+                {(activeTab === 'Expense' || activeTab === 'Income') && (
+                    <View style={styles.section}>
+                        <Text style={[styles.label, { color: themeColors.textSecondary }]}>Category</Text>
+                        <View style={styles.categoriesGrid}>
+                            {(activeTab === 'Expense' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES).map(cat => (
+                                <TouchableOpacity
+                                    key={cat}
+                                    onPress={() => setSelectedCategory(cat)}
+                                    style={[
+                                        styles.accountGridItem,
+                                        { backgroundColor: selectedCategory === cat ? accentColor : themeColors.surface, borderColor: themeColors.border },
+                                        selectedCategory === cat ? { borderColor: 'transparent' } : {}
+                                    ]}
+                                >
+                                    <View style={[styles.accIconBox, { backgroundColor: selectedCategory === cat ? 'rgba(255,255,255,0.2)' : themeColors.background }]}>
+                                        {getCategoryIcon(cat, 14, selectedCategory === cat ? 'white' : accentColor)}
+                                    </View>
+                                    <Text style={[styles.accountGridName, { color: selectedCategory === cat ? 'white' : themeColors.text }]}>{cat}</Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+                    </View>
+                )}
+
+                {/* Account Selection Logic */}
+                {!isPersonFlow ? (
+                    <>
+                        <View style={styles.section}>
+                            <Text style={[styles.label, { color: themeColors.textSecondary }]}>
+                                {activeTab === 'Income' ? 'Receive Into' : 'Pay From'}
+                            </Text>
+                            <View style={styles.categoriesGrid}>
+                                {accounts
+                                    .filter(a => a.type !== 'PERSON')
+                                    .map(acc => renderAccountGridItem(acc, selectedFromAccount === acc.id, () => setSelectedFromAccount(acc.id)))}
+                                <TouchableOpacity
+                                    style={[styles.accountGridItem, styles.addAccountBtn, { borderColor: accentColor }]}
+                                    onPress={() => navigation.navigate('AddAccount')}
+                                >
+                                    <Plus size={14} color={accentColor} />
+                                    <Text style={{ color: accentColor, fontSize: 13, fontWeight: '600' }}>Add</Text>
+                                </TouchableOpacity>
+                            </View>
+                        </View>
+
+                        {activeTab === 'Transfer' && (
+                            <View style={styles.section}>
+                                <Text style={[styles.label, { color: themeColors.textSecondary }]}>Pay To</Text>
+                                <View style={styles.categoriesGrid}>
+                                    {accounts
+                                        .filter(acc => acc.id !== selectedFromAccount && acc.type !== 'PERSON')
+                                        .map(acc => renderAccountGridItem(acc, selectedToAccount === acc.id, () => setSelectedToAccount(acc.id)))}
+                                    <TouchableOpacity
+                                        style={[styles.accountGridItem, styles.addAccountBtn, { borderColor: accentColor }]}
+                                        onPress={() => navigation.navigate('AddAccount')}
+                                    >
+                                        <Plus size={14} color={accentColor} />
+                                        <Text style={{ color: accentColor, fontSize: 13, fontWeight: '600' }}>Add</Text>
+                                    </TouchableOpacity>
+                                </View>
+                            </View>
+                        )}
+                    </>
+                ) : (
+                    <View style={styles.section}>
+                        <Text style={[styles.label, { color: themeColors.textSecondary }]}>Nature of Transaction</Text>
+                        <View style={styles.categoriesGrid}>
+                            {['Lend', 'Borrow', 'Pay', 'Receive'].map(nature => (
+                                <TouchableOpacity
+                                    key={nature}
+                                    onPress={() => setSubTab(nature)}
+                                    style={[
+                                        styles.accountGridItem,
+                                        { backgroundColor: subTab === nature ? accentColor : themeColors.surface, borderColor: themeColors.border },
+                                        subTab === nature ? { borderColor: 'transparent' } : {}
+                                    ]}
+                                >
+                                    <View style={[styles.accIconBox, { backgroundColor: subTab === nature ? 'rgba(255,255,255,0.2)' : themeColors.background }]}>
+                                        {['Lend', 'Pay'].includes(nature) ?
+                                            <ArrowUpRight size={14} color={subTab === nature ? 'white' : accentColor} /> :
+                                            <ArrowDownLeft size={14} color={subTab === nature ? 'white' : accentColor} />
+                                        }
+                                    </View>
+                                    <Text style={[styles.accountGridName, { color: subTab === nature ? 'white' : themeColors.text }]}>{nature}</Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+
+                        <Text style={[styles.label, { color: themeColors.textSecondary, marginTop: 16 }]}>
+                            {['Lend', 'Pay'].includes(subTab) ? 'Pay From (Your Account)' : 'Receive Into (Your Account)'}
+                        </Text>
+                        <View style={styles.categoriesGrid}>
+                            {accounts
+                                .filter(a => a.type !== 'PERSON')
+                                .map(acc => renderAccountGridItem(
+                                    acc,
+                                    ['Lend', 'Pay'].includes(subTab) ? selectedFromAccount === acc.id : selectedToAccount === acc.id,
+                                    () => ['Lend', 'Pay'].includes(subTab) ? setSelectedFromAccount(acc.id) : setSelectedToAccount(acc.id)
+                                ))}
+                            <TouchableOpacity
+                                style={[styles.accountGridItem, styles.addAccountBtn, { borderColor: accentColor }]}
+                                onPress={() => navigation.navigate('AddAccount')}
+                            >
+                                <Plus size={14} color={accentColor} />
+                                <Text style={{ color: accentColor, fontSize: 13, fontWeight: '600' }}>Add</Text>
+                            </TouchableOpacity>
+                        </View>
+
+                        <Text style={[styles.label, { color: themeColors.textSecondary, marginTop: 16 }]}>Person</Text>
+                        <View style={styles.categoriesGrid}>
+                            {accounts
+                                .filter(a => a.type === 'PERSON')
+                                .map(acc => renderAccountGridItem(
+                                    acc,
+                                    ['Lend', 'Pay'].includes(subTab) ? selectedToAccount === acc.id : selectedFromAccount === acc.id,
+                                    () => ['Lend', 'Pay'].includes(subTab) ? setSelectedToAccount(acc.id) : setSelectedFromAccount(acc.id)
+                                ))}
+                            <TouchableOpacity
+                                style={[styles.accountGridItem, styles.addAccountBtn, { borderColor: accentColor }]}
+                                onPress={() => navigation.navigate('AddAccount')}
+                            >
+                                <Plus size={16} color={accentColor} />
+                                <Text style={{ color: accentColor, fontSize: 12, fontWeight: '600' }}>Add</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                )}
+
+                <View style={styles.section}>
+                    <Text style={[styles.label, { color: themeColors.textSecondary }]}>Transaction Details</Text>
+                    <TouchableOpacity
+                        style={[styles.detailItem, { backgroundColor: themeColors.surface, borderColor: themeColors.border }]}
+                        onPress={() => setShowDatePicker(true)}
+                    >
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                            <CalendarIcon size={20} color={accentColor} />
+                            <Text style={{ color: themeColors.text }}>{format(date, 'PPPP')}</Text>
+                        </View>
+                    </TouchableOpacity>
+
+                    {showDatePicker && (
+                        <DateTimePicker
+                            value={date}
+                            mode="date"
+                            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                            onChange={(event, selectedDate) => {
+                                setShowDatePicker(false);
+                                if (selectedDate) setDate(selectedDate);
+                            }}
+                        />
+                    )}
+
+                    <View style={[styles.detailItem, { backgroundColor: themeColors.surface, borderColor: themeColors.border, marginTop: 12 }]}>
+                        <FileText size={20} color={accentColor} style={{ marginRight: 12 }} />
+                        <TextInput
+                            style={{ flex: 1, color: themeColors.text }}
+                            placeholder="Add Description (Optional)"
+                            placeholderTextColor={themeColors.textSecondary}
+                            value={description}
+                            onChangeText={setDescription}
+                        />
+                    </View>
+
+                    <TouchableOpacity
+                        style={[styles.detailItem, { backgroundColor: themeColors.surface, borderColor: themeColors.border, marginTop: 12 }]}
+                        onPress={pickReceipt}
+                    >
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flex: 1 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                                <ImageIcon size={20} color={accentColor} />
+                                <Text style={{ color: themeColors.text }}>{receiptUri ? 'Receipt Attached' : 'Add Receipt (Optional)'}</Text>
+                            </View>
+                            {receiptUri && (
+                                <TouchableOpacity onPress={() => setReceiptUri(null)}>
+                                    <X size={16} color="#EF4444" />
+                                </TouchableOpacity>
+                            )}
+                        </View>
+                    </TouchableOpacity>
+
+                    {receiptUri && (
+                        <Image source={{ uri: receiptUri }} style={styles.receiptPreview} />
+                    )}
+                </View>
+
+                <TouchableOpacity
+                    style={[styles.saveButton, { backgroundColor: accentColor }]}
+                    onPress={handleSave}
+                >
+                    <Text style={styles.saveButtonText}>Add Transaction</Text>
+                </TouchableOpacity>
+            </ScrollView>
+        </ScreenWrapper>
+    );
+};
+
+const styles = StyleSheet.create({
+    header: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingVertical: 10,
+        marginBottom: 20,
+    },
+    headerTitle: { fontSize: 20, fontWeight: 'bold' },
+    tabs: {
+        flexDirection: 'row',
+        borderRadius: 12,
+        padding: 4,
+        marginBottom: 24,
+    },
+    tab: {
+        flex: 1,
+        paddingVertical: 10,
+        alignItems: 'center',
+        borderRadius: 8,
+    },
+    tabText: { fontSize: 13, fontWeight: '600' },
+    inputContainer: {
+        marginBottom: 24,
+    },
+    label: { fontSize: 14, fontWeight: '600', marginBottom: 12 },
+    amountInputRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        borderBottomWidth: 1,
+        borderColor: 'rgba(0,0,0,0.1)',
+        paddingBottom: 8,
+    },
+    currencyPrefix: { fontSize: 24, marginRight: 10, fontWeight: '500' },
+    amountInput: {
+        fontSize: 40,
+        fontWeight: 'bold',
+        flex: 1,
+    },
+    section: {
+        marginBottom: 24,
+    },
+    categoriesGrid: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 8,
+    },
+    accountGridItem: {
+        height: 36,
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 12,
+        borderRadius: 18,
+        borderWidth: 1,
+        gap: 6,
+    },
+    accIconBox: {
+        width: 24,
+        height: 24,
+        borderRadius: 12,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    accountGridName: { fontSize: 12, fontWeight: '600' },
+    addAccountBtn: {
+        justifyContent: 'center',
+        borderStyle: 'dashed',
+    },
+    detailItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: 12,
+        borderRadius: 12,
+        borderWidth: 1,
+    },
+    receiptPreview: {
+        width: '100%',
+        height: 200,
+        borderRadius: 12,
+        marginTop: 12,
+        resizeMode: 'cover',
+    },
+    saveButton: {
+        marginTop: 10,
+        marginBottom: 40,
+        padding: 16,
+        borderRadius: 16,
+        alignItems: 'center',
+    },
+    saveButtonText: {
+        color: 'white',
+        fontSize: 16,
+        fontWeight: 'bold',
+    },
+});
+
+export default AddTransactionScreen;
