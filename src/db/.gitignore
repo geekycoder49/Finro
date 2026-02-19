@@ -1,0 +1,29 @@
+# dependencies
+node_modules/
+
+# Expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# React Native
+android/
+ios/
+
+# Logs
+*.log
+yarn-error.log
+
+# macOS
+.DS_Store
+
+# Local env files
+.env*
+.local
+
+# TypeScript
+*.tsbuildinfo
+
+# APK files
+*.apk
