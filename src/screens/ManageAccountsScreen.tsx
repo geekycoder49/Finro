@@ -1,22 +1,27 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Image, Animated } from 'react-native';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useFocusEffect } from '@react-navigation/native';
 import { DARK_THEME, LIGHT_THEME } from '../theme/colors';
 import { ScreenWrapper } from '../components/ScreenWrapper';
+import { useTheme } from '../hooks/useTheme';
 import { ChevronLeft, Landmark, Wallet, User, Plus, Trash2, Edit2, CheckCircle2, Circle } from 'lucide-react-native';
 import { getAccounts, deleteAccount, Account } from '../db/database';
+import { getBankIcon } from '../utils/accountIcons';
 
 const ManageAccountsScreen = ({ navigation }: any) => {
     const { currency, theme, accentColor } = useSettingsStore();
-    const themeColors = theme === 'dark' ? DARK_THEME : LIGHT_THEME;
+    const { themeColors } = useTheme();
 
     const [accounts, setAccounts] = useState<Account[]>([]);
     const [isSelectionMode, setIsSelectionMode] = useState(false);
     const [selectedIds, setSelectedIds] = useState<number[]>([]);
 
-    useEffect(() => {
-        fetchAccounts();
-    }, []);
+    useFocusEffect(
+        useCallback(() => {
+            fetchAccounts();
+        }, [])
+    );
 
     const fetchAccounts = () => {
         setAccounts(getAccounts());
@@ -91,7 +96,7 @@ const ManageAccountsScreen = ({ navigation }: any) => {
                     }
                 ]}
             >
-                {isSelectionMode && (
+                {isSelectionMode ? (
                     <View style={styles.selectionIndicator}>
                         {isSelected ? (
                             <CheckCircle2 size={24} color={accentColor} fill={accentColor + '20'} />
@@ -99,32 +104,30 @@ const ManageAccountsScreen = ({ navigation }: any) => {
                             <Circle size={24} color={themeColors.textSecondary} />
                         )}
                     </View>
-                )}
+                ) : null}
 
                 <View style={[styles.iconBox, { backgroundColor: isSelected ? accentColor + '20' : themeColors.background }]}>
-                    {acc.iconUri ? (
-                        <Image source={{ uri: acc.iconUri }} style={{ width: 24, height: 24, borderRadius: 12 }} />
-                    ) : (
-                        acc.type === 'BANK' ? <Landmark size={20} color={isSelected ? accentColor : themeColors.text} /> :
-                            acc.type === 'CASH' ? <Wallet size={20} color={isSelected ? accentColor : themeColors.text} /> :
-                                <User size={20} color={isSelected ? accentColor : themeColors.text} />
-                    )}
+                    {getBankIcon(acc.name, acc.type, acc.iconUri, isSelected ? accentColor : undefined, themeColors, 24)}
                 </View>
 
                 <View style={{ flex: 1, marginLeft: 15 }}>
                     <Text style={[styles.name, { color: themeColors.text }]}>{acc.name}</Text>
-                    <Text style={[styles.type, { color: themeColors.textSecondary }]}>{acc.type}</Text>
+                    <Text style={[styles.type, { color: themeColors.textSecondary }]}>
+                        {acc.type === 'WALLET' ? 'Online Wallet' : acc.type === 'MUTUAL_FUND' ? 'Investment' : acc.type.charAt(0) + acc.type.slice(1).toLowerCase()}
+                    </Text>
                     <Text style={[styles.balance, { color: themeColors.text }]}>{currency} {acc.balance.toLocaleString()}</Text>
                 </View>
 
-                {!isSelectionMode && (
+                {!isSelectionMode ? (
                     <View style={styles.actions}>
-                        <TouchableOpacity
-                            onPress={() => navigation.navigate('EditAccount', { account: acc })}
-                            style={[styles.actionBtn, { backgroundColor: themeColors.background }]}
-                        >
-                            <Edit2 size={18} color={themeColors.text} />
-                        </TouchableOpacity>
+                        {acc.type !== 'MUTUAL_FUND' ? (
+                            <TouchableOpacity
+                                onPress={() => navigation.navigate('EditAccount', { account: acc })}
+                                style={[styles.actionBtn, { backgroundColor: themeColors.background }]}
+                            >
+                                <Edit2 size={18} color={themeColors.text} />
+                            </TouchableOpacity>
+                        ) : null}
                         <TouchableOpacity
                             onPress={() => handleDeleteSingle(acc.id, acc.name)}
                             style={[styles.actionBtn, { backgroundColor: '#EF444415' }]}
@@ -132,7 +135,7 @@ const ManageAccountsScreen = ({ navigation }: any) => {
                             <Trash2 size={18} color="#EF4444" />
                         </TouchableOpacity>
                     </View>
-                )}
+                ) : null}
             </TouchableOpacity>
         );
     };
@@ -171,7 +174,7 @@ const ManageAccountsScreen = ({ navigation }: any) => {
                 )}
             </ScrollView>
 
-            {isSelectionMode && (
+            {isSelectionMode ? (
                 <View style={[styles.selectionFooter, { backgroundColor: themeColors.surface, borderTopColor: themeColors.border }]}>
                     <TouchableOpacity
                         style={[styles.footerBtn, { backgroundColor: themeColors.background }]}
@@ -187,7 +190,7 @@ const ManageAccountsScreen = ({ navigation }: any) => {
                         <Text style={{ color: 'white', fontWeight: 'bold' }}>Delete Selected</Text>
                     </TouchableOpacity>
                 </View>
-            )}
+            ) : null}
         </ScreenWrapper>
     );
 };

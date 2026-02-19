@@ -1,37 +1,67 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, Platform } from 'react-native';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { DARK_THEME, LIGHT_THEME } from '../theme/colors';
+import { useTheme } from '../hooks/useTheme';
 import { ScreenWrapper } from '../components/ScreenWrapper';
-import { ChevronLeft, ChevronRight, Search, Filter, ArrowUpRight, ArrowDownLeft, ArrowLeftRight, Plus, Landmark, Wallet, User } from 'lucide-react-native';
+import { ChevronLeft, ChevronRight, Search, Filter, ArrowUpRight, ArrowDownLeft, ArrowLeftRight, Plus, Landmark, Wallet, User, Calendar } from 'lucide-react-native';
 import { getTransactions, Transaction } from '../db/database';
-import { format } from 'date-fns';
+import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear, isWithinInterval } from 'date-fns';
 import { getCategoryIcon } from '../utils/categoryIcons';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import { TransactionCard } from '../components/TransactionCard';
 
 const AllTransactionsScreen = ({ navigation }: any) => {
     const { currency, theme, accentColor } = useSettingsStore();
-    const themeColors = theme === 'dark' ? DARK_THEME : LIGHT_THEME;
+    const { themeColors } = useTheme();
 
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [searchQuery, setSearchQuery] = useState('');
     const [filterType, setFilterType] = useState('ALL');
-    const [selectedMonth, setSelectedMonth] = useState(new Date());
+    const [selectedPeriod, setSelectedPeriod] = useState<'ALL' | 'WEEK' | 'MONTH' | 'YEAR' | 'CUSTOM'>('MONTH');
+    const [dateRange, setDateRange] = useState<{ start: Date, end: Date }>({
+        start: startOfMonth(new Date()),
+        end: endOfMonth(new Date())
+    });
+    const [showDatePicker, setShowDatePicker] = useState(false);
+    const [dateType, setDateType] = useState<'START' | 'END'>('START');
 
     useEffect(() => {
         const trans = getTransactions(1000); // Higher limit for history
         setTransactions(trans);
     }, []);
 
-    const changeMonth = (increment: number) => {
-        const newDate = new Date(selectedMonth);
-        newDate.setMonth(newDate.getMonth() + increment);
-        setSelectedMonth(newDate);
-    };
+    useEffect(() => {
+        if (selectedPeriod === 'CUSTOM') return;
+
+        const now = new Date();
+        let start = now;
+        let end = now;
+
+        switch (selectedPeriod) {
+            case 'WEEK':
+                start = startOfWeek(now, { weekStartsOn: 1 });
+                end = endOfWeek(now, { weekStartsOn: 1 });
+                break;
+            case 'MONTH':
+                start = startOfMonth(now);
+                end = endOfMonth(now);
+                break;
+            case 'YEAR':
+                start = startOfYear(now);
+                end = endOfYear(now);
+                break;
+            case 'ALL':
+                start = new Date(2000, 0, 1);
+                end = new Date(2100, 0, 1);
+                break;
+        }
+        setDateRange({ start, end });
+    }, [selectedPeriod]);
 
     const filteredTransactions = transactions.filter(t => {
         const tDate = new Date(t.date);
-        const matchesMonth = tDate.getMonth() === selectedMonth.getMonth() &&
-            tDate.getFullYear() === selectedMonth.getFullYear();
+        const matchesRange = tDate >= dateRange.start && tDate <= dateRange.end;
 
         const matchesSearch = (t.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
             (t.description || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -39,80 +69,55 @@ const AllTransactionsScreen = ({ navigation }: any) => {
             (t.toAccountName || '').toLowerCase().includes(searchQuery.toLowerCase()));
         const matchesType = filterType === 'ALL' || t.type === filterType;
 
-        return matchesMonth && matchesSearch && matchesType;
+        return matchesRange && matchesSearch && matchesType;
     });
-
-    const renderTransaction = (item: Transaction) => {
-        const isExpense = item.type === 'EXPENSE';
-        const isIncome = item.type === 'INCOME';
-        const isTransfer = item.type === 'TRANSFER';
-        const isPeople = item.type === 'PEOPLE';
-
-        const categoryIcon = isExpense ? <ArrowUpRight color="#EF4444" size={20} /> :
-            isIncome ? <ArrowDownLeft color="#10B981" size={20} /> :
-                isTransfer ? <ArrowLeftRight color={accentColor} size={20} /> :
-                    <Plus color={accentColor} size={20} />;
-
-        return (
-            <TouchableOpacity
-                key={item.id}
-                style={[styles.transactionRow, { backgroundColor: themeColors.surface }]}
-                onPress={() => navigation.navigate('EditTransaction', { transaction: item })}
-            >
-                <View style={[styles.transIconBox, { backgroundColor: themeColors.background }]}>
-                    {isTransfer ? getCategoryIcon('Transfer', 20, accentColor) :
-                        isPeople ? (
-                            (item.category === 'Lend' || item.category === 'Pay') ?
-                                <ArrowUpRight size={20} color="#EF4444" /> :
-                                <ArrowDownLeft size={20} color="#10B981" />
-                        ) :
-                            getCategoryIcon(item.category, 20, isExpense ? '#EF4444' : '#10B981')}
-                </View>
-                <View style={{ flex: 1, marginLeft: 12 }}>
-                    <Text style={[styles.transCategory, { color: themeColors.text }]}>
-                        {(isTransfer || isPeople) ?
-                            (item.category && item.category !== 'Transfer' ? `Transfer (${item.category})` : 'Transfer') :
-                            (item.category || 'No Category')}
-                    </Text>
-                    <Text style={[styles.transDescription, { color: themeColors.textSecondary }]}>
-                        {isTransfer ? `${item.fromAccountName} → ${item.toAccountName}` :
-                            isPeople ? (item.category === 'Lend' || item.category === 'Pay' ? `to ${item.toAccountName}` : `from ${item.fromAccountName}`) :
-                                `${item.fromAccountName} ${item.description ? `• ${item.description}` : ''}`}
-                    </Text>
-                </View>
-                <View style={{ alignItems: 'flex-end' }}>
-                    <Text style={[styles.transAmount, { color: isExpense ? '#EF4444' : isIncome ? '#10B981' : themeColors.text }]}>
-                        {isExpense ? '-' : isIncome ? '+' : ''}{currency} {item.amount.toLocaleString()}
-                    </Text>
-                    <Text style={[styles.transDate, { color: themeColors.textSecondary }]}>
-                        {format(new Date(item.date), 'dd MMM yyyy')}
-                    </Text>
-                </View>
-            </TouchableOpacity>
-        );
-    };
 
     return (
         <ScreenWrapper>
             <View style={styles.header}>
-                <TouchableOpacity onPress={() => navigation.goBack()}>
-                    <ChevronLeft color={themeColors.text} size={28} />
-                </TouchableOpacity>
-                <Text style={[styles.headerTitle, { color: themeColors.text }]}>History</Text>
-                <View style={{ width: 28 }} />
-            </View>
-
-            <View style={styles.monthSelector}>
-                <TouchableOpacity onPress={() => changeMonth(-1)}>
+                <TouchableOpacity onPress={() => navigation.goBack()} style={[styles.backBtn, { backgroundColor: themeColors.surface }]}>
                     <ChevronLeft color={themeColors.text} size={24} />
                 </TouchableOpacity>
-                <Text style={[styles.monthText, { color: themeColors.text }]}>{format(selectedMonth, 'MMMM yyyy')}</Text>
-                <TouchableOpacity onPress={() => changeMonth(1)}>
-                    <ChevronRight color={themeColors.text} size={24} />
-                </TouchableOpacity>
+                <Text style={[styles.headerTitle, { color: themeColors.text }]}>History</Text>
+                <View style={{ width: 44 }} />
             </View>
 
-            <View style={[styles.searchContainer, { backgroundColor: themeColors.surface }]}>
+            {/* Period Filters */}
+            <View style={styles.periodFilterSection}>
+                <View style={styles.filterRow}>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+                        {(['ALL', 'WEEK', 'MONTH', 'YEAR'] as const).map(p => (
+                            <TouchableOpacity
+                                key={p}
+                                style={[
+                                    styles.periodChip,
+                                    { backgroundColor: selectedPeriod === p ? themeColors.text : themeColors.surface, borderColor: themeColors.border }
+                                ]}
+                                onPress={() => setSelectedPeriod(p)}
+                            >
+                                <Text style={[styles.periodChipText, { color: selectedPeriod === p ? themeColors.background : themeColors.text }]}>{p}</Text>
+                            </TouchableOpacity>
+                        ))}
+                    </ScrollView>
+                    <TouchableOpacity
+                        style={[styles.calendarBtn, { backgroundColor: selectedPeriod === 'CUSTOM' ? accentColor : themeColors.surface, borderColor: themeColors.border }]}
+                        onPress={() => {
+                            setSelectedPeriod('CUSTOM');
+                            setDateType('START');
+                            setShowDatePicker(true);
+                        }}
+                    >
+                        <Calendar size={18} color={selectedPeriod === 'CUSTOM' ? 'white' : themeColors.text} />
+                    </TouchableOpacity>
+                </View>
+                {selectedPeriod === 'CUSTOM' ? (
+                    <Text style={[{ fontSize: 12, color: accentColor, fontWeight: '700', marginTop: 8, textAlign: 'center' }]}>
+                        {format(dateRange.start, 'dd MMM yyyy')} - {format(dateRange.end, 'dd MMM yyyy')}
+                    </Text>
+                ) : null}
+            </View>
+
+            <View style={[styles.searchContainer, { backgroundColor: themeColors.surface, borderColor: themeColors.border }]}>
                 <Search color={themeColors.textSecondary} size={20} />
                 <TextInput
                     style={[styles.searchInput, { color: themeColors.text }]}
@@ -123,18 +128,18 @@ const AllTransactionsScreen = ({ navigation }: any) => {
                 />
             </View>
 
-            <View style={styles.filtersSection}>
+            <View style={styles.typeFiltersSection}>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
                     {['ALL', 'EXPENSE', 'INCOME', 'TRANSFER', 'PEOPLE'].map(type => (
                         <TouchableOpacity
                             key={type}
                             onPress={() => setFilterType(type)}
                             style={[
-                                styles.filterChip,
+                                styles.typeChip,
                                 { backgroundColor: filterType === type ? accentColor : themeColors.surface, borderColor: themeColors.border }
                             ]}
                         >
-                            <Text style={[styles.filterText, { color: filterType === type ? 'white' : themeColors.text }]}>
+                            <Text style={[styles.typeFilterText, { color: filterType === type ? 'white' : themeColors.text }]}>
                                 {type.charAt(0) + type.slice(1).toLowerCase()}
                             </Text>
                         </TouchableOpacity>
@@ -142,15 +147,43 @@ const AllTransactionsScreen = ({ navigation }: any) => {
                 </ScrollView>
             </View>
 
-            <ScrollView contentContainerStyle={{ gap: 10, paddingBottom: 20 }}>
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingBottom: 20 }}>
                 {filteredTransactions.length > 0 ? (
-                    filteredTransactions.map(renderTransaction)
+                    filteredTransactions.map((item) => (
+                        <TransactionCard
+                            key={item.id}
+                            item={item}
+                            onPress={(t) => item.isSystem === 1 ? null : navigation.navigate('EditTransaction', { transaction: t })}
+                        />
+                    ))
                 ) : (
                     <View style={styles.emptyState}>
-                        <Text style={{ color: themeColors.textSecondary }}>No transactions found</Text>
+                        <Text style={[{ color: themeColors.textSecondary }]}>No transactions found</Text>
                     </View>
                 )}
             </ScrollView>
+
+            {showDatePicker ? (
+                <DateTimePicker
+                    value={dateType === 'START' ? dateRange.start : dateRange.end}
+                    mode="date"
+                    display="default"
+                    onChange={(event, date) => {
+                        setShowDatePicker(false);
+                        if (date) {
+                            if (dateType === 'START') {
+                                setDateRange({ ...dateRange, start: date });
+                                setTimeout(() => {
+                                    setDateType('END');
+                                    setShowDatePicker(true);
+                                }, 500);
+                            } else {
+                                setDateRange({ ...dateRange, end: date });
+                            }
+                        }
+                    }}
+                />
+            ) : null}
         </ScreenWrapper>
     );
 };
@@ -162,52 +195,59 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         marginBottom: 20,
     },
-    headerTitle: { fontSize: 22, fontWeight: 'bold' },
-    monthSelector: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: 20,
-        backgroundColor: 'rgba(0,0,0,0.02)',
-        padding: 12,
-        borderRadius: 12,
-    },
-    monthText: { fontSize: 16, fontWeight: '600' },
-    searchContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: 12,
-        height: 50,
-        borderRadius: 12,
-        marginBottom: 16,
-    },
-    searchInput: { flex: 1, marginLeft: 10, fontSize: 16 },
-    filtersSection: { marginBottom: 16 },
-    filterChip: {
-        paddingHorizontal: 16,
-        paddingVertical: 8,
-        borderRadius: 20,
-        borderWidth: 1,
-    },
-    filterText: { fontSize: 14, fontWeight: '500' },
-    transactionRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        padding: 12,
-        borderRadius: 16,
-    },
-    transIconBox: {
+    backBtn: {
         width: 44,
         height: 44,
-        borderRadius: 22,
+        borderRadius: 15,
         justifyContent: 'center',
         alignItems: 'center',
     },
-    transCategory: { fontSize: 16, fontWeight: '600' },
-    transDescription: { fontSize: 12, marginTop: 2 },
-    transAmount: { fontSize: 16, fontWeight: '700' },
-    transDate: { fontSize: 11, marginTop: 4 },
-    emptyState: { padding: 40, alignItems: 'center' },
+    headerTitle: { fontSize: 22, fontWeight: '900', letterSpacing: -0.5 },
+    periodFilterSection: {
+        marginBottom: 20
+    },
+    filterRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10
+    },
+    periodChip: {
+        paddingHorizontal: 20,
+        paddingVertical: 10,
+        borderRadius: 15,
+        borderWidth: 1,
+    },
+    periodChipText: {
+        fontSize: 13,
+        fontWeight: '800'
+    },
+    calendarBtn: {
+        width: 44,
+        height: 44,
+        borderRadius: 15,
+        borderWidth: 1,
+        justifyContent: 'center',
+        alignItems: 'center'
+    },
+    searchContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 16,
+        height: 54,
+        borderRadius: 18,
+        marginBottom: 16,
+        borderWidth: 1,
+    },
+    searchInput: { flex: 1, marginLeft: 10, fontSize: 16, fontWeight: '500' },
+    typeFiltersSection: { marginBottom: 16 },
+    typeChip: {
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+        borderRadius: 15,
+        borderWidth: 1,
+    },
+    typeFilterText: { fontSize: 14, fontWeight: '700' },
+    emptyState: { padding: 60, alignItems: 'center' },
 });
 
 export default AllTransactionsScreen;

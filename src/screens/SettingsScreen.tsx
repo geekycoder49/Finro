@@ -1,12 +1,17 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, Image, Alert, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, Image, Alert, Platform, Modal, Dimensions } from 'react-native';
+import ColorPicker from 'react-native-wheel-color-picker';
+import { Plus } from 'lucide-react-native';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { DARK_THEME, LIGHT_THEME } from '../theme/colors';
 import { ScreenWrapper } from '../components/ScreenWrapper';
-import { Moon, Sun, Monitor, Type, Palette, Database, Info, LogOut, Check, User, Image as ImageIcon, ChevronRight, FileText, Languages } from 'lucide-react-native';
-import { getAccounts, getTransactions, clearAllData } from '../db/database';
-import { importExcelData } from '../utils/excelImport';
+import { Moon, Sun, Monitor, Palette, Check, User, ChevronRight, FileText, Languages, Zap, Download, Database } from 'lucide-react-native';
+import { clearAllData } from '../db/database';
+import { importExcelData, exportExcelData } from '../utils/excelImport';
+import { createBackup, restoreBackup } from '../utils/backup';
 import * as ImagePicker from 'expo-image-picker';
+import { useToast } from '../components/ToastProvider';
+import { useTheme } from '../hooks/useTheme';
 
 const AVATARS = [
     'https://img.icons8.com/color/96/bear.png',
@@ -25,30 +30,98 @@ const COLORS = [
 
 const CURRENCIES = ['PKR', 'USD', 'EUR', 'GBP', 'INR', 'AED', 'SAR'];
 
-const FONTS = [
-    { name: 'System Default', value: 'System' },
-    { name: 'Sans Serif', value: 'sans-serif' },
-    { name: 'Serif Style', value: 'serif' },
-    { name: 'Monospace Code', value: 'monospace' },
-    { name: 'Modern Light', value: 'sans-serif-light' },
-    { name: 'Elegant Thin', value: 'sans-serif-thin' },
-    { name: 'Professional Medium', value: 'sans-serif-medium' },
-    { name: 'Bold Impact', value: 'sans-serif-black' },
-    { name: 'Classic Lucida', value: 'lucida grande' },
-    { name: 'Minimalist Verdana', value: 'verdana' },
-    { name: 'Tradition Georgia', value: 'georgia' },
+const ANIMATIONS = [
+    'Fade', 'Slide Right', 'Slide Left', 'Slide Up', 'Slide Down',
+    'Zoom In', 'Zoom Out', 'Rotate', 'Flip', 'Bounce'
 ];
 
 const SettingsScreen = ({ navigation }: any) => {
     const {
-        currency, theme, accentColor, userName, profileImage, fontFamily,
-        setCurrency, setTheme, setAccentColor, setUserName, setProfileImage, setFontFamily
+        currency, theme, accentColor, userName, profileImage, animationType,
+        setCurrency, setTheme, setAccentColor, setUserName, setProfileImage, setAnimationType
     } = useSettingsStore();
-    const themeColors = theme === 'dark' ? DARK_THEME : LIGHT_THEME;
+    const { themeColors, isDarkMode } = useTheme();
+    const { showToast } = useToast();
 
     const [isEditingProfile, setIsEditingProfile] = useState(false);
     const [editName, setEditName] = useState(userName);
     const [editImage, setEditImage] = useState(profileImage);
+
+    // Unified Selection Modal State
+    const [modalVisible, setModalVisible] = useState(false);
+    const [modalType, setModalType] = useState<'THEME' | 'ANIMATION' | 'COLOR'>('THEME');
+    const [showColorPicker, setShowColorPicker] = useState(false);
+
+
+
+    const handleOpenAnimation = () => {
+        setModalType('ANIMATION');
+        setModalVisible(true);
+    };
+
+    const renderSelectionModal = () => (
+        <Modal visible={modalVisible} transparent={true} animationType="fade">
+            <TouchableOpacity
+                style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 24 }}
+                activeOpacity={1}
+                onPress={() => setModalVisible(false)}
+            >
+                <View style={{
+                    backgroundColor: themeColors.surface,
+                    borderRadius: 24,
+                    padding: 20,
+                    maxHeight: '70%',
+                    width: '100%',
+                    maxWidth: 400,
+                    alignSelf: 'center',
+                    shadowColor: "#000",
+                    shadowOffset: { width: 0, height: 10 },
+                    shadowOpacity: 0.25,
+                    shadowRadius: 15,
+                    elevation: 10
+                }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                        <Text style={{ fontSize: 18, fontWeight: 'bold', color: themeColors.text }}>
+                            Transition Effect
+                        </Text>
+                        <TouchableOpacity onPress={() => setModalVisible(false)} style={{ padding: 4 }}>
+                            <Check size={20} color="transparent" />
+                        </TouchableOpacity>
+                    </View>
+
+                    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 10 }}>
+
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+                            {ANIMATIONS.map(anim => (
+                                <TouchableOpacity
+                                    key={anim}
+                                    style={{
+                                        width: '48%',
+                                        paddingVertical: 12, paddingHorizontal: 12, borderRadius: 12,
+                                        backgroundColor: animationType === anim ? accentColor : themeColors.background,
+                                        borderWidth: 1, borderColor: animationType === anim ? 'transparent' : themeColors.border,
+                                        alignItems: 'center'
+                                    }}
+                                    onPress={() => { setAnimationType(anim); setModalVisible(false); }}
+                                >
+                                    <Text style={{ fontSize: 13, fontWeight: '600', color: animationType === anim ? 'white' : themeColors.text, textAlign: 'center' }}>
+                                        {anim}
+                                    </Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+                    </ScrollView>
+
+                    <TouchableOpacity
+                        style={{ marginTop: 20, padding: 14, backgroundColor: themeColors.background, borderRadius: 12, alignItems: 'center' }}
+                        onPress={() => setModalVisible(false)}
+                    >
+                        <Text style={{ color: themeColors.textSecondary, fontWeight: '600', fontSize: 14 }}>Close</Text>
+                    </TouchableOpacity>
+                </View>
+            </TouchableOpacity>
+        </Modal>
+    );
 
     const pickProfileImage = async () => {
         const result = await ImagePicker.launchImageLibraryAsync({
@@ -80,7 +153,7 @@ const SettingsScreen = ({ navigation }: any) => {
                     style: "destructive",
                     onPress: () => {
                         clearAllData();
-                        Alert.alert("Success", "All data has been cleared.");
+                        showToast("All data has been cleared.", "success");
                         navigation.navigate('Dashboard');
                     }
                 }
@@ -91,18 +164,47 @@ const SettingsScreen = ({ navigation }: any) => {
     const handleImportExcel = async () => {
         Alert.alert(
             "Import Excel",
-            "This will add all transactions from your Excel file. Do you want to proceed?",
+            "This will merge/rebuild data from your Excel file. Do you want to proceed?",
             [
                 { text: "Cancel", style: "cancel" },
                 {
                     text: "Import",
                     onPress: async () => {
                         const result = await importExcelData();
-                        Alert.alert(result.success ? "Success" : "Error", result.message);
+                        if (result.success) {
+                            showToast(result.message, "success");
+                        } else {
+                            showToast(result.message, "error");
+                        }
                     }
                 }
             ]
         );
+    };
+
+    const handleExportExcel = async () => {
+        const result = await exportExcelData();
+        if (result.success) {
+            showToast(result.message, "success");
+        } else {
+            showToast(result.message, "error");
+        }
+    };
+
+    const handleCreateBackup = async () => {
+        const success = await createBackup();
+        if (success) {
+            showToast("Backup created and saved to Finro folder!", "success");
+        } else {
+            showToast("Failed to create backup", "error");
+        }
+    };
+
+    const handleRestoreBackup = async () => {
+        const success = await restoreBackup();
+        if (success) {
+            showToast("Backup restored successfully!", "success");
+        }
     };
 
     const renderSettingItem = (icon: any, title: string, value: string, onPress: () => void, color?: string) => (
@@ -111,10 +213,10 @@ const SettingsScreen = ({ navigation }: any) => {
                 <View style={[styles.iconBox, { backgroundColor: color || themeColors.surface }]}>
                     {icon}
                 </View>
-                <Text style={[styles.settingTitle, { color: themeColors.text, fontFamily: fontFamily === 'System' ? undefined : fontFamily }]}>{title}</Text>
+                <Text style={[styles.settingTitle, { color: themeColors.text }]}>{title}</Text>
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <Text style={[styles.settingValue, { color: themeColors.textSecondary, fontFamily: fontFamily === 'System' ? undefined : fontFamily }]}>{value}</Text>
+                <Text style={[styles.settingValue, { color: themeColors.textSecondary }]}>{value}</Text>
                 <ChevronRight color={themeColors.textSecondary} size={18} />
             </View>
         </TouchableOpacity>
@@ -122,189 +224,258 @@ const SettingsScreen = ({ navigation }: any) => {
 
     return (
         <ScreenWrapper>
-            <View style={styles.header}>
-                <Text style={[styles.headerTitle, { color: themeColors.text, fontFamily: fontFamily === 'System' ? undefined : fontFamily }]}>Settings</Text>
-            </View>
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+                <View style={styles.header}>
+                    <Text style={[styles.headerTitle, { color: themeColors.text }]}>Settings</Text>
+                </View>
 
-            {/* Profile Section */}
-            <View style={[styles.card, { backgroundColor: themeColors.surface, borderColor: themeColors.border }]}>
-                {isEditingProfile ? (
-                    <View>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 15 }}>
-                            <Image
-                                source={{ uri: editImage || 'https://via.placeholder.com/100' }}
-                                style={{ width: 64, height: 64, borderRadius: 32, marginRight: 16 }}
+                {/* Profile Section */}
+                <View style={[styles.card, { backgroundColor: themeColors.surface, borderColor: themeColors.border }]}>
+                    {isEditingProfile ? (
+                        <View>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 15 }}>
+                                <Image
+                                    source={{ uri: editImage || 'https://via.placeholder.com/100' }}
+                                    style={{ width: 64, height: 64, borderRadius: 32, marginRight: 16 }}
+                                />
+                                <View style={{ flex: 1 }}>
+                                    <TouchableOpacity
+                                        style={[styles.btn, { backgroundColor: themeColors.surface, borderWidth: 1, borderColor: themeColors.border, minHeight: 40 }]}
+                                        onPress={pickProfileImage}
+                                    >
+                                        <Text style={{ color: themeColors.text, fontSize: 12, fontWeight: '600' }}>Gallery Upload</Text>
+                                    </TouchableOpacity>
+                                </View>
+                            </View>
+                            <TextInput
+                                style={[styles.input, { color: themeColors.text, borderColor: themeColors.border, marginBottom: 15 }]}
+                                value={editName}
+                                onChangeText={setEditName}
+                                placeholder="Username"
                             />
-                            <View style={{ flex: 1 }}>
-                                <TouchableOpacity
-                                    style={[styles.btn, { backgroundColor: themeColors.surface, borderWidth: 1, borderColor: themeColors.border, minHeight: 40 }]}
-                                    onPress={pickProfileImage}
-                                >
-                                    <Text style={{ color: themeColors.text, fontSize: 12, fontWeight: '600' }}>Gallery Upload</Text>
+
+                            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 15 }}>
+                                {AVATARS.map(url => (
+                                    <TouchableOpacity key={url} onPress={() => setEditImage(url)} style={{ marginRight: 8 }}>
+                                        <Image source={{ uri: url }} style={[styles.avatarOption, { borderWidth: editImage === url ? 3 : 0, borderColor: accentColor }]} />
+                                    </TouchableOpacity>
+                                ))}
+                            </ScrollView>
+
+                            <View style={{ flexDirection: 'row', gap: 8 }}>
+                                <TouchableOpacity style={[styles.btn, { backgroundColor: themeColors.background }]} onPress={() => setIsEditingProfile(false)}>
+                                    <Text style={{ color: themeColors.text }}>Cancel</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity style={[styles.btn, { backgroundColor: accentColor }]} onPress={handleSaveProfile}>
+                                    <Text style={{ color: 'white', fontWeight: 'bold' }}>Save</Text>
                                 </TouchableOpacity>
                             </View>
                         </View>
-                        <TextInput
-                            style={[styles.input, { color: themeColors.text, borderColor: themeColors.border, marginBottom: 15 }]}
-                            value={editName}
-                            onChangeText={setEditName}
-                            placeholder="Username"
-                        />
+                    ) : (
+                        <TouchableOpacity
+                            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
+                            onPress={() => {
+                                setEditName(userName);
+                                setEditImage(profileImage);
+                                setIsEditingProfile(true);
+                            }}
+                        >
+                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                <Image
+                                    source={{ uri: profileImage || 'https://via.placeholder.com/100' }}
+                                    style={{ width: 50, height: 50, borderRadius: 25, marginRight: 12 }}
+                                />
+                                <View>
+                                    <Text style={[styles.profileName, { color: themeColors.text }]}>{userName}</Text>
+                                    <Text style={{ color: themeColors.textSecondary, fontSize: 13 }}>Personalize Profile</Text>
+                                </View>
+                            </View>
+                            <ChevronRight color={themeColors.textSecondary} size={20} />
+                        </TouchableOpacity>
+                    )}
+                </View>
 
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 15 }}>
-                            {AVATARS.map(url => (
-                                <TouchableOpacity key={url} onPress={() => setEditImage(url)} style={{ marginRight: 8 }}>
-                                    <Image source={{ uri: url }} style={[styles.avatarOption, { borderWidth: editImage === url ? 3 : 0, borderColor: accentColor }]} />
+                {/* Appearance */}
+                <Text style={[styles.sectionHeader, { color: themeColors.textSecondary }]}>Appearance</Text>
+                <View style={[styles.card, { backgroundColor: themeColors.surface, borderColor: themeColors.border, padding: 0 }]}>
+                    <View style={{ paddingHorizontal: 12, paddingVertical: 8 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                <View style={[styles.iconBox, { backgroundColor: themeColors.background }]}>
+                                    {theme === 'dark' ? <Moon size={18} color={accentColor} /> : theme === 'light' ? <Sun size={18} color={accentColor} /> : <Monitor size={18} color={accentColor} />}
+                                </View>
+                                <Text style={[styles.settingTitle, { color: themeColors.text }]}>Theme Mode</Text>
+                            </View>
+                            <View style={{ flexDirection: 'row', backgroundColor: themeColors.background, borderRadius: 12, padding: 4 }}>
+                                {[
+                                    { value: 'light', icon: <Sun size={14} color={theme === 'light' ? 'white' : themeColors.textSecondary} /> },
+                                    { value: 'dark', icon: <Moon size={14} color={theme === 'dark' ? 'white' : themeColors.textSecondary} /> },
+                                    { value: 'system', icon: <Monitor size={14} color={theme === 'system' ? 'white' : themeColors.textSecondary} /> }
+                                ].map((opt) => (
+                                    <TouchableOpacity
+                                        key={opt.value}
+                                        onPress={() => setTheme(opt.value as any)}
+                                        style={{
+                                            paddingHorizontal: 12,
+                                            paddingVertical: 6,
+                                            borderRadius: 8,
+                                            backgroundColor: theme === opt.value ? accentColor : 'transparent',
+                                            flexDirection: 'row',
+                                            alignItems: 'center',
+                                            gap: 6
+                                        }}
+                                    >
+                                        {opt.icon}
+                                        {theme === opt.value ? <Text style={{ color: 'white', fontSize: 11, fontWeight: '700' }}>{opt.value.charAt(0).toUpperCase() + opt.value.slice(1)}</Text> : null}
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+                        </View>
+                    </View>
+                    <View style={styles.divider} />
+
+                    {/* Animation Selector Dropdown */}
+                    {renderSettingItem(
+                        <Zap size={18} color={accentColor} />,
+                        "Page Transitions",
+                        animationType,
+                        handleOpenAnimation
+                    )}
+
+                    <View style={styles.divider} />
+
+                    <View style={{ padding: 12 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
+                            <View style={[styles.iconBox, { backgroundColor: themeColors.background }]}>
+                                <Palette size={18} color={accentColor} />
+                            </View>
+                            <Text style={[styles.settingTitle, { color: themeColors.text }]}>App Color</Text>
+                        </View>
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+                            {COLORS.map(c => (
+                                <TouchableOpacity
+                                    key={c}
+                                    style={[styles.colorCircle, { backgroundColor: c }]}
+                                    onPress={() => setAccentColor(c)}
+                                >
+                                    {accentColor === c ? <Check color="white" size={14} /> : null}
+                                </TouchableOpacity>
+                            ))}
+                            {/* Custom Color Selector Wheel Trigger */}
+                            <TouchableOpacity
+                                style={[styles.colorCircle, { backgroundColor: themeColors.background, borderStyle: 'dashed', borderWidth: 1, borderColor: accentColor }]}
+                                onPress={() => setShowColorPicker(true)}
+                            >
+                                <Plus color={accentColor} size={18} />
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+
+                {/* Color Picker Modal */}
+                <Modal visible={showColorPicker} transparent animationType="slide">
+                    <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', padding: 24 }}>
+                        <View style={{ backgroundColor: themeColors.surface, borderRadius: 32, padding: 24, alignItems: 'center', height: 480 }}>
+                            <Text style={{ fontSize: 20, fontWeight: '900', color: themeColors.text, marginBottom: 20 }}>Custom Accent Color</Text>
+
+                            <View style={{ flex: 1, width: '100%', paddingHorizontal: 10 }}>
+                                <ColorPicker
+                                    color={accentColor}
+                                    onColorChangeComplete={(color) => setAccentColor(color)}
+                                    thumbSize={30}
+                                    sliderSize={30}
+                                    noSnap={true}
+                                    row={false}
+                                />
+                            </View>
+
+                            <TouchableOpacity
+                                style={{
+                                    backgroundColor: accentColor,
+                                    width: '100%',
+                                    height: 54,
+                                    borderRadius: 16,
+                                    justifyContent: 'center',
+                                    alignItems: 'center',
+                                    marginTop: 20
+                                }}
+                                onPress={() => setShowColorPicker(false)}
+                            >
+                                <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 16 }}>Set Color</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </Modal>
+
+                {/* Regional */}
+                <Text style={[styles.sectionHeader, { color: themeColors.textSecondary }]}>Currency</Text>
+                <View style={[styles.card, { backgroundColor: themeColors.surface, borderColor: themeColors.border, padding: 0 }]}>
+                    <View style={{ padding: 12 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
+                            <View style={[styles.iconBox, { backgroundColor: themeColors.background }]}>
+                                <Languages size={18} color={accentColor} />
+                            </View>
+                            <Text style={[styles.settingTitle, { color: themeColors.text }]}>Default Currency</Text>
+                        </View>
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                            {CURRENCIES.map(c => (
+                                <TouchableOpacity
+                                    key={c}
+                                    style={[styles.currencyChip, { backgroundColor: currency === c ? accentColor : themeColors.background }]}
+                                    onPress={() => setCurrency(c)}
+                                >
+                                    <Text style={{ color: currency === c ? 'white' : themeColors.text, fontWeight: '700' }}>{c}</Text>
                                 </TouchableOpacity>
                             ))}
                         </ScrollView>
-
-                        <View style={{ flexDirection: 'row', gap: 8 }}>
-                            <TouchableOpacity style={[styles.btn, { backgroundColor: themeColors.background }]} onPress={() => setIsEditingProfile(false)}>
-                                <Text style={{ color: themeColors.text }}>Cancel</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity style={[styles.btn, { backgroundColor: accentColor }]} onPress={handleSaveProfile}>
-                                <Text style={{ color: 'white', fontWeight: 'bold' }}>Save</Text>
-                            </TouchableOpacity>
-                        </View>
-                    </View>
-                ) : (
-                    <TouchableOpacity
-                        style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
-                        onPress={() => {
-                            setEditName(userName);
-                            setEditImage(profileImage);
-                            setIsEditingProfile(true);
-                        }}
-                    >
-                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                            <Image
-                                source={{ uri: profileImage || 'https://via.placeholder.com/100' }}
-                                style={{ width: 50, height: 50, borderRadius: 25, marginRight: 12 }}
-                            />
-                            <View>
-                                <Text style={[styles.profileName, { color: themeColors.text, fontFamily: fontFamily === 'System' ? undefined : fontFamily }]}>{userName}</Text>
-                                <Text style={{ color: themeColors.textSecondary, fontSize: 13 }}>Personalize Profile</Text>
-                            </View>
-                        </View>
-                        <ChevronRight color={themeColors.textSecondary} size={20} />
-                    </TouchableOpacity>
-                )}
-            </View>
-
-            {/* Appearance */}
-            <Text style={[styles.sectionHeader, { color: themeColors.textSecondary }]}>Appearance</Text>
-            <View style={[styles.card, { backgroundColor: themeColors.surface, borderColor: themeColors.border, padding: 0 }]}>
-                {renderSettingItem(
-                    theme === 'dark' ? <Moon size={18} color={accentColor} /> : theme === 'light' ? <Sun size={18} color={accentColor} /> : <Monitor size={18} color={accentColor} />,
-                    "Theme Mode",
-                    theme.charAt(0).toUpperCase() + theme.slice(1),
-                    () => setTheme(theme === 'system' ? 'light' : theme === 'light' ? 'dark' : 'system')
-                )}
-                <View style={styles.divider} />
-
-                <View style={{ padding: 12 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
-                        <View style={[styles.iconBox, { backgroundColor: themeColors.background }]}>
-                            <Palette size={18} color={accentColor} />
-                        </View>
-                        <Text style={[styles.settingTitle, { color: themeColors.text, fontFamily: fontFamily === 'System' ? undefined : fontFamily }]}>Brand Accent</Text>
-                    </View>
-                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-                        {COLORS.map(c => (
-                            <TouchableOpacity
-                                key={c}
-                                style={[styles.colorCircle, { backgroundColor: c }]}
-                                onPress={() => setAccentColor(c)}
-                            >
-                                {accentColor === c && <Check color="white" size={14} />}
-                            </TouchableOpacity>
-                        ))}
                     </View>
                 </View>
 
-                <View style={styles.divider} />
 
-                {/* Font Selector */}
-                <View style={{ padding: 12 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
-                        <View style={[styles.iconBox, { backgroundColor: themeColors.background }]}>
-                            <Type size={18} color={accentColor} />
-                        </View>
-                        <Text style={[styles.settingTitle, { color: themeColors.text, fontFamily: fontFamily === 'System' ? undefined : fontFamily }]}>Typography</Text>
-                    </View>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                        {FONTS.map(f => (
-                            <TouchableOpacity
-                                key={f.value}
-                                style={[
-                                    styles.fontChip,
-                                    {
-                                        backgroundColor: fontFamily === f.value ? accentColor : themeColors.background,
-                                        borderColor: themeColors.border,
-                                        borderWidth: 1
-                                    }
-                                ]}
-                                onPress={() => setFontFamily(f.value)}
-                            >
-                                <Text style={{
-                                    color: fontFamily === f.value ? 'white' : themeColors.text,
-                                    fontFamily: f.value === 'System' ? undefined : f.value,
-                                    fontWeight: '600',
-                                    fontSize: 13
-                                }}>{f.name}</Text>
-                            </TouchableOpacity>
-                        ))}
-                    </ScrollView>
+
+                {/* Backup & Restore */}
+                <Text style={[styles.sectionHeader, { color: themeColors.textSecondary }]}>Backup & Restore</Text>
+                <View style={[styles.card, { backgroundColor: themeColors.surface, borderColor: themeColors.border, padding: 0 }]}>
+                    {renderSettingItem(
+                        <Download size={18} color={accentColor} />,
+                        "Export Data (Excel)",
+                        "",
+                        handleExportExcel
+                    )}
+                    {renderSettingItem(
+                        <FileText size={18} color={accentColor} />,
+                        "Import Data (Excel)",
+                        "",
+                        handleImportExcel
+                    )}
+                    <View style={styles.divider} />
+                    {renderSettingItem(
+                        <Zap size={18} color={accentColor} />,
+                        "Create Backup (JSON)",
+                        "",
+                        handleCreateBackup
+                    )}
+                    {renderSettingItem(
+                        <Database size={18} color={accentColor} />,
+                        "Restore Backup (JSON)",
+                        "",
+                        handleRestoreBackup
+                    )}
+                    <View style={styles.divider} />
+                    {renderSettingItem(
+                        <Database size={18} color="#EF4444" />,
+                        "Erase All Content",
+                        "",
+                        handleResetData
+                    )}
                 </View>
-            </View>
 
-            {/* Preferences */}
-            <Text style={[styles.sectionHeader, { color: themeColors.textSecondary }]}>Regional</Text>
-            <View style={[styles.card, { backgroundColor: themeColors.surface, borderColor: themeColors.border, padding: 0 }]}>
-                <View style={{ padding: 12 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
-                        <View style={[styles.iconBox, { backgroundColor: themeColors.background }]}>
-                            <Languages size={18} color={accentColor} />
-                        </View>
-                        <Text style={[styles.settingTitle, { color: themeColors.text, fontFamily: fontFamily === 'System' ? undefined : fontFamily }]}>Default Currency</Text>
-                    </View>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                        {CURRENCIES.map(c => (
-                            <TouchableOpacity
-                                key={c}
-                                style={[styles.currencyChip, { backgroundColor: currency === c ? accentColor : themeColors.background }]}
-                                onPress={() => setCurrency(c)}
-                            >
-                                <Text style={{ color: currency === c ? 'white' : themeColors.text, fontWeight: '700' }}>{c}</Text>
-                            </TouchableOpacity>
-                        ))}
-                    </ScrollView>
-                </View>
-            </View>
+                <View style={{ height: 30 }} />
+                <Text style={{ textAlign: 'center', color: themeColors.textSecondary, fontSize: 12 }}>Developed by Talha Bajwa</Text>
+                <Text style={{ textAlign: 'center', color: themeColors.textSecondary, fontSize: 12 }}>© All Rights Reserved</Text>
+            </ScrollView>
 
-            {/* Data */}
-            <Text style={[styles.sectionHeader, { color: themeColors.textSecondary }]}>Workspace & Backup</Text>
-            <View style={[styles.card, { backgroundColor: themeColors.surface, borderColor: themeColors.border, padding: 0 }]}>
-                {renderSettingItem(
-                    <FileText size={18} color={accentColor} />,
-                    "Import Data (Excel)",
-                    "",
-                    handleImportExcel
-                )}
-                <View style={styles.divider} />
-                {renderSettingItem(
-                    <Database size={18} color="#EF4444" />,
-                    "Erase All Content",
-                    "",
-                    handleResetData
-                )}
-            </View>
-
-            <View style={{ height: 30 }} />
-            <Text style={{ textAlign: 'center', color: themeColors.textSecondary, fontSize: 12 }}>Build v1.2.4</Text>
-            <Text style={{ textAlign: 'center', color: themeColors.textSecondary, fontSize: 12, marginBottom: 40 }}>Powered by Advanced AI</Text>
-
+            {renderSelectionModal()}
         </ScreenWrapper>
     );
 };
@@ -339,10 +510,10 @@ const styles = StyleSheet.create({
     settingValue: { fontSize: 13, marginRight: 6 },
     divider: { height: 1, backgroundColor: 'rgba(0,0,0,0.03)' },
 
-    // Color/Currency/Font
+    // Color/Currency/Chip
     colorCircle: { width: 32, height: 32, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
     currencyChip: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 12, marginRight: 8 },
-    fontChip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12, marginRight: 8, minWidth: 80, alignItems: 'center' },
+    optionChip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12, marginRight: 8, minWidth: 80, alignItems: 'center' },
 });
 
 export default SettingsScreen;

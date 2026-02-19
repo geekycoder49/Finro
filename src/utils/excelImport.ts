@@ -1,7 +1,87 @@
+import { Platform } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as XLSX from 'xlsx';
-import { addTransaction, getAccounts, addAccount, clearAllData, updateAccount } from '../db/database';
+import { addTransaction, getAccounts, addAccount, clearAllData, updateAccount, getTransactions } from '../db/database';
+import * as Sharing from 'expo-sharing';
+import { getFinroFolderUri } from './storage';
+
+/**
+ * Robust Excel/CSV Exporter
+ * Produces a file compatible with the importer
+ */
+export const exportExcelData = async () => {
+    try {
+        const transactions = getTransactions(5000); // Get up to 5000 transactions
+        const accounts = getAccounts();
+
+        const exportData = transactions.map(t => ({
+            'Voucher Type': t.type,
+            'Voucher Date': t.date,
+            'Voucher Amount': t.type === 'EXPENSE' ? -t.amount : t.amount,
+            'Description': t.description,
+            'Category Name': t.category,
+            'Account Name': t.fromAccountName || t.toAccountName || 'Cash'
+        }));
+
+        // Add dummy rows for accounts with balance to ensure balances are synced on re-import
+        accounts.forEach(acc => {
+            exportData.push({
+                'Voucher Type': 'Balance Adjustment' as any,
+                'Voucher Date': new Date().toISOString().split('T')[0],
+                'Voucher Amount': 0,
+                'Description': 'Account Balance Sync',
+                'Category Name': 'Balance',
+                'Account Name': acc.name,
+                // The importer looks for 'Closing Balance' or 'Balance'
+                // @ts-ignore
+                'Closing Balance': acc.balance
+            });
+        });
+
+        const ws = XLSX.utils.json_to_sheet(exportData);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Transactions");
+
+        const wbout = XLSX.write(wb, { type: 'base64', bookType: 'xlsx' });
+
+        // Save to document directory for persistence
+        const filename = 'Finro_Backup_' + new Date().toISOString().split('T')[0] + '.xlsx';
+        const fileUri = FileSystem.documentDirectory + filename;
+
+        await FileSystem.writeAsStringAsync(fileUri, wbout, { encoding: FileSystem.EncodingType.Base64 });
+
+        if (Platform.OS === 'android') {
+            const folderUri = await getFinroFolderUri();
+            if (folderUri) {
+                const safUri = await FileSystem.StorageAccessFramework.createFileAsync(
+                    folderUri,
+                    filename,
+                    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                );
+                await FileSystem.writeAsStringAsync(safUri, wbout, { encoding: FileSystem.EncodingType.Base64 });
+                return { success: true, message: 'Excel export saved to Finro folder!' };
+            }
+        }
+
+        if (await Sharing.isAvailableAsync()) {
+            await Sharing.shareAsync(fileUri);
+            return {
+                success: true,
+                message: 'Export ready. Please save the file.'
+            };
+        } else {
+            return {
+                success: true,
+                message: `Export Saved internally: ${fileUri}`
+            };
+        }
+
+    } catch (error: any) {
+        console.error('Export error:', error);
+        return { success: false, message: error.message || 'Export failed.' };
+    }
+};
 
 /**
  * Robust Excel/CSV Importer
@@ -43,7 +123,7 @@ export const importExcelData = async () => {
             'transport income', 'pocket money', 'freelance', 'tutoring income', 'gifts received', 'rent received',
             'loan received', 'other income', 'personal', 'food & drink', 'transport', 'grocery', 'travel',
             'entertainment', 'fuel & maintenance', 'bills & utilities', 'medical', 'shopping', 'education',
-            'office', 'home', 'rent paid', 'loan paid', 'donations/charity', 'gifts', 'family', 'health & fitness',
+            'office', 'home', 'rent paid', 'loan paid', 'donations/charity', 'donations / charity', 'gifts', 'family', 'health & fitness',
             'wedding', 'mobile', 'electronics', 'insurance', 'installment', 'other expenses', 'category', 'category name'
         ]);
 
@@ -241,7 +321,6 @@ export const importExcelData = async () => {
                     if (sameDay && sameAbsAmount && oppositeSign && otIsTransfer && differentAccounts) {
                         pairIndex = j;
                         console.log(`  [Pairing Success] Found pair at index ${j}: ${ot.accountName} ${ot.amount}`);
-                        break;
                     }
                 }
 

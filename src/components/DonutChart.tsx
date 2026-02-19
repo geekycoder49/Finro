@@ -44,17 +44,18 @@ const DonutChart: React.FC<DonutChartProps> = ({
                 <G x={center} y={center}>
                     {displayData.map((item, index) => {
                         const sliceAngle = (item.value / total) * 360;
-                        const endAngle = startAngle + sliceAngle;
+                        const isFullCircle = sliceAngle >= 360;
+                        const effectiveEndAngle = isFullCircle ? startAngle + 359.995 : startAngle + sliceAngle;
 
                         const x1 = radius * Math.cos((startAngle * Math.PI) / 180);
                         const y1 = radius * Math.sin((startAngle * Math.PI) / 180);
-                        const x2 = radius * Math.cos((endAngle * Math.PI) / 180);
-                        const y2 = radius * Math.sin((endAngle * Math.PI) / 180);
+                        const x2 = radius * Math.cos((effectiveEndAngle * Math.PI) / 180);
+                        const y2 = radius * Math.sin((effectiveEndAngle * Math.PI) / 180);
 
                         const ix1 = innerRadius * Math.cos((startAngle * Math.PI) / 180);
                         const iy1 = innerRadius * Math.sin((startAngle * Math.PI) / 180);
-                        const ix2 = innerRadius * Math.cos((endAngle * Math.PI) / 180);
-                        const iy2 = innerRadius * Math.sin((endAngle * Math.PI) / 180);
+                        const ix2 = innerRadius * Math.cos((effectiveEndAngle * Math.PI) / 180);
+                        const iy2 = innerRadius * Math.sin((effectiveEndAngle * Math.PI) / 180);
 
                         const largeArcFlag = sliceAngle > 180 ? 1 : 0;
 
@@ -72,7 +73,7 @@ const DonutChart: React.FC<DonutChartProps> = ({
                         const ex = (radius + 25) * Math.cos((midAngle * Math.PI) / 180);
                         const ey = (radius + 25) * Math.sin((midAngle * Math.PI) / 180);
 
-                        startAngle = endAngle;
+                        startAngle += sliceAngle;
 
                         return (
                             <G key={index}>
@@ -81,8 +82,8 @@ const DonutChart: React.FC<DonutChartProps> = ({
                                     x1={lx} y1={ly}
                                     x2={ex} y2={ey}
                                     stroke={item.color}
-                                    strokeWidth="1.5"
-                                    opacity="0.6"
+                                    strokeWidth={1.5}
+                                    opacity={0.6}
                                 />
                             </G>
                         );

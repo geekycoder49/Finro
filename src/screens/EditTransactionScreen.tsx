@@ -2,28 +2,34 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, Alert, Image, Platform } from 'react-native';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { DARK_THEME, LIGHT_THEME } from '../theme/colors';
+import { useTheme } from '../hooks/useTheme';
 import { ScreenWrapper } from '../components/ScreenWrapper';
-import { X, Check, Wallet, Landmark, User, Plus, Trash2, Calendar as CalendarIcon, FileText, Image as ImageIcon, ArrowUpRight, ArrowDownLeft } from 'lucide-react-native';
+import { X, Check, Wallet, Landmark, User, Plus, Trash2, Calendar as CalendarIcon, FileText, Image as ImageIcon, ArrowUpRight, ArrowDownLeft, TrendingUp } from 'lucide-react-native';
 import { getAccounts, updateTransaction, deleteTransaction, Account } from '../db/database';
 import { getCategoryIcon } from '../utils/categoryIcons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as ImagePicker from 'expo-image-picker';
 import { format } from 'date-fns';
+import { getBankIcon } from '../utils/accountIcons';
+import { getNAVForDate } from '../services/navHistoryService';
 
 const EXPENSE_CATEGORIES = [
-    'Family', 'Travel', 'Rent', 'Food & Drink', 'Personal', 'Other Expenses',
-    'Bills', 'Education', 'Grocery', 'Fitness', 'Mobile', 'Donations'
+    'Travel', 'Food & Drink', 'Grocery', 'Medical', 'Other Expenses',
+    'Rent Paid', 'Bills & Utilities', 'Mobile', 'Education', 'Personal',
+    'Donations / Charity', 'Family', 'Office',
+    'Electronics', 'Transport', 'Health & Fitness', 'Gifts',
+    'Shopping'
 ];
 
 const INCOME_CATEGORIES = [
-    'Salary', 'Bonus', 'Freelance', 'Other Income', 'Commission'
+    'Salary', 'Bonus', 'Freelance', 'Allowance', 'Other Income', 'Commission', 'Gifts'
 ];
 
-const TABS = ['Expense', 'Income', 'Transfer', 'People'];
+const TABS = ['Expense', 'Income', 'Transfer', 'People', 'Investment'];
 
 const EditTransactionScreen = ({ navigation, route }: any) => {
     const { currency, theme, accentColor } = useSettingsStore();
-    const themeColors = theme === 'dark' ? DARK_THEME : LIGHT_THEME;
+    const { themeColors } = useTheme();
     const transaction = route?.params?.transaction;
 
     const [activeTab, setActiveTab] = useState('Expense');
@@ -37,59 +43,123 @@ const EditTransactionScreen = ({ navigation, route }: any) => {
     const [showDatePicker, setShowDatePicker] = useState(false);
     const [description, setDescription] = useState('');
     const [receiptUri, setReceiptUri] = useState<string | null>(null);
+    const [historicalNAV, setHistoricalNAV] = useState<number | null>(null);
+    const [isLoadingHistNAV, setIsLoadingHistNAV] = useState(false);
+
+    const formatWithCommas = (value: string) => {
+        const cleanValue = value.replace(/[^0-9]/g, '');
+        if (!cleanValue) return '';
+        return parseInt(cleanValue).toLocaleString('en-US');
+    };
+
+    const handleAmountChange = (text: string) => {
+        const formatted = formatWithCommas(text);
+        setAmount(formatted);
+    };
 
     useEffect(() => {
         const accs = getAccounts();
         setAccounts(accs);
 
         if (transaction) {
+            if (transaction.isSystem === 1) {
+                Alert.alert("System Transaction", "This is a system-generated transaction (e.g., CGT Tax) and cannot be modified manually.");
+                navigation.goBack();
+                return;
+            }
+
             const typeMap: { [key: string]: string } = {
                 'EXPENSE': 'Expense',
                 'INCOME': 'Income',
                 'TRANSFER': 'Transfer',
                 'PEOPLE': 'People'
             };
-            setActiveTab(typeMap[transaction.type] || 'Expense');
+
+            let tab = typeMap[transaction.type] || 'Expense';
+            if (transaction.category === 'Investment') tab = 'Investment';
+
+            setActiveTab(tab);
 
             if (transaction.type === 'PEOPLE' || ['Lend', 'Borrow', 'Pay', 'Receive'].includes(transaction.category)) {
                 setSubTab(transaction.category);
             }
-            setAmount(transaction.amount.toString());
+            setAmount(formatWithCommas(transaction.amount.toString()));
             setSelectedCategory(transaction.category);
             setSelectedFromAccount(transaction.fromAccountId);
             setSelectedToAccount(transaction.toAccountId || null);
             setDescription(transaction.description || '');
             setDate(new Date(transaction.date));
             setReceiptUri(transaction.receiptUri || null);
+            if (transaction.transactionNAV) {
+                setHistoricalNAV(transaction.transactionNAV);
+            }
         }
     }, [transaction]);
+
+    // Fetch Historical NAV when date or account changes
+    useEffect(() => {
+        const fetchHistNAV = async () => {
+            const isInvestment = activeTab === 'Investment';
+            const targetAccountId = isInvestment ? selectedToAccount : selectedFromAccount;
+
+            const acc = accounts.find(a => a.id === targetAccountId);
+            if (acc && acc.type === 'MUTUAL_FUND') {
+                setIsLoadingHistNAV(true);
+                const hist = await getNAVForDate(acc.name, date.toISOString());
+                if (hist) {
+                    setHistoricalNAV(hist.nav);
+                } else if (transaction && transaction.fromAccountId === targetAccountId && transaction.transactionNAV) {
+                    setHistoricalNAV(transaction.transactionNAV);
+                } else {
+                    setHistoricalNAV(acc.currentNAV || null);
+                }
+                setIsLoadingHistNAV(false);
+            } else {
+                setHistoricalNAV(null);
+            }
+        };
+
+        if (accounts.length > 0) fetchHistNAV();
+    }, [date, selectedFromAccount, selectedToAccount, activeTab, accounts]);
 
     const handleUpdate = () => {
         const isPeople = activeTab === 'People';
         const isTransfer = activeTab === 'Transfer';
+        const isInvestment = activeTab === 'Investment';
 
-        if (!amount || (!selectedCategory && !isPeople && !isTransfer) || !selectedFromAccount) {
+        if (!amount || (!selectedCategory && !isPeople && !isTransfer && !isInvestment) || !selectedFromAccount) {
             alert('Please fill all required fields');
             return;
         }
 
-        const numAmount = parseFloat(amount);
+        const cleanAmount = amount.replace(/,/g, '');
+        const numAmount = parseFloat(cleanAmount);
         if (isNaN(numAmount)) return;
 
         const fromAcc = accounts.find(a => a.id === selectedFromAccount);
         const toAcc = accounts.find(a => a.id === selectedToAccount);
         const isPersonInvolved = fromAcc?.type === 'PERSON' || toAcc?.type === 'PERSON';
 
+        let finalType = activeTab.toUpperCase();
+        let finalCategory = (activeTab === 'People' || (activeTab === 'Transfer' && isPersonInvolved)) ? subTab : (selectedCategory || activeTab);
+
+        if (isInvestment) {
+            finalType = 'TRANSFER';
+            finalCategory = 'Investment';
+        }
+
         updateTransaction(
             transaction.id,
             numAmount,
-            activeTab.toUpperCase(),
-            (activeTab === 'People' || (activeTab === 'Transfer' && isPersonInvolved)) ? subTab : (selectedCategory || 'Transfer'),
+            finalType,
+            finalCategory,
             selectedFromAccount,
             selectedToAccount || undefined,
             description,
             date.toISOString(),
-            receiptUri || undefined
+            receiptUri || undefined,
+            undefined, // cgtAmount placeholder
+            historicalNAV || undefined
         );
 
         navigation.goBack();
@@ -136,9 +206,7 @@ const EditTransactionScreen = ({ navigation, route }: any) => {
             ]}
         >
             <View style={[styles.accIconBox, { backgroundColor: isSelected ? 'rgba(255,255,255,0.2)' : themeColors.background }]}>
-                {acc.type === 'BANK' ? <Landmark size={14} color={isSelected ? 'white' : themeColors.text} /> :
-                    acc.type === 'CASH' ? <Wallet size={14} color={isSelected ? 'white' : themeColors.text} /> :
-                        <User size={14} color={isSelected ? 'white' : themeColors.text} />}
+                {getBankIcon(acc.name, acc.type, acc.iconUri, isSelected ? 'white' : accentColor, themeColors, 14)}
             </View>
             <Text style={[styles.accountGridName, { color: isSelected ? 'white' : themeColors.text }]}>{acc.name}</Text>
         </TouchableOpacity>
@@ -159,12 +227,25 @@ const EditTransactionScreen = ({ navigation, route }: any) => {
                     </TouchableOpacity>
                 </View>
 
-                <View style={{ marginBottom: 20 }}>
-                    <Text style={[styles.label, { color: themeColors.textSecondary }]}>Transaction Type</Text>
-                    <View style={[styles.staticTypeLabel, { backgroundColor: accentColor + '20', borderColor: accentColor }]}>
-                        <Text style={{ color: accentColor, fontWeight: '700', fontSize: 16 }}>{activeTab}</Text>
-                    </View>
-                </View>
+                <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.tabsContainer}
+                    style={[styles.tabs, { backgroundColor: themeColors.surface }]}
+                >
+                    {TABS.map(tab => (
+                        <TouchableOpacity
+                            key={tab}
+                            onPress={() => {
+                                setActiveTab(tab);
+                                setSelectedCategory('');
+                            }}
+                            style={[styles.tab, activeTab === tab ? { backgroundColor: accentColor } : {}]}
+                        >
+                            <Text style={[styles.tabText, { color: activeTab === tab ? 'white' : themeColors.textSecondary }]}>{tab}</Text>
+                        </TouchableOpacity>
+                    ))}
+                </ScrollView>
 
                 <View style={styles.inputContainer}>
                     <Text style={[styles.label, { color: themeColors.textSecondary }]}>Amount</Text>
@@ -176,12 +257,12 @@ const EditTransactionScreen = ({ navigation, route }: any) => {
                             placeholderTextColor={themeColors.textSecondary}
                             keyboardType="numeric"
                             value={amount}
-                            onChangeText={setAmount}
+                            onChangeText={handleAmountChange}
                         />
                     </View>
                 </View>
 
-                {(activeTab === 'Expense' || activeTab === 'Income') && (
+                {(activeTab === 'Expense' || activeTab === 'Income') ? (
                     <View style={styles.section}>
                         <Text style={[styles.label, { color: themeColors.textSecondary }]}>Category</Text>
                         <View style={styles.categoriesGrid}>
@@ -203,10 +284,10 @@ const EditTransactionScreen = ({ navigation, route }: any) => {
                             ))}
                         </View>
                     </View>
-                )}
+                ) : null}
 
-                {/* Conditional Account Lists based on Nature/Tab */}
-                {!isPersonFlow ? (
+                {/* Account Selection Logic */}
+                {(!isPersonFlow && activeTab !== 'Investment') ? (
                     <>
                         <View style={styles.section}>
                             <Text style={[styles.label, { color: themeColors.textSecondary }]}>
@@ -219,7 +300,7 @@ const EditTransactionScreen = ({ navigation, route }: any) => {
                             </View>
                         </View>
 
-                        {activeTab === 'Transfer' && (
+                        {activeTab === 'Transfer' ? (
                             <View style={styles.section}>
                                 <Text style={[styles.label, { color: themeColors.textSecondary }]}>Pay To</Text>
                                 <View style={styles.categoriesGrid}>
@@ -228,8 +309,24 @@ const EditTransactionScreen = ({ navigation, route }: any) => {
                                         .map((acc: Account) => renderAccountGridItem(acc, selectedToAccount === acc.id, () => setSelectedToAccount(acc.id)))}
                                 </View>
                             </View>
-                        )}
+                        ) : null}
                     </>
+                ) : activeTab === 'Investment' ? (
+                    <View style={styles.section}>
+                        <Text style={[styles.label, { color: themeColors.textSecondary }]}>Mutual Fund</Text>
+                        <View style={styles.categoriesGrid}>
+                            {accounts
+                                .filter(a => a.type === 'MUTUAL_FUND')
+                                .map(acc => renderAccountGridItem(acc, selectedToAccount === acc.id, () => setSelectedToAccount(acc.id)))}
+                        </View>
+
+                        <Text style={[styles.label, { color: themeColors.textSecondary, marginTop: 16 }]}>Pay From</Text>
+                        <View style={styles.categoriesGrid}>
+                            {accounts
+                                .filter(a => a.type !== 'PERSON' && a.type !== 'MUTUAL_FUND')
+                                .map(acc => renderAccountGridItem(acc, selectedFromAccount === acc.id, () => setSelectedFromAccount(acc.id)))}
+                        </View>
+                    </View>
                 ) : (
                     <View style={styles.section}>
                         <Text style={[styles.label, { color: themeColors.textSecondary }]}>Nature of Transaction</Text>
@@ -260,7 +357,7 @@ const EditTransactionScreen = ({ navigation, route }: any) => {
                         </Text>
                         <View style={styles.categoriesGrid}>
                             {accounts
-                                .filter((a: Account) => a.type !== 'PERSON')
+                                .filter((a: Account) => a.type !== 'PERSON' && a.type !== 'MUTUAL_FUND')
                                 .map((acc: Account) => renderAccountGridItem(
                                     acc,
                                     ['Lend', 'Pay'].includes(subTab) ? selectedFromAccount === acc.id : selectedToAccount === acc.id,
@@ -293,7 +390,7 @@ const EditTransactionScreen = ({ navigation, route }: any) => {
                         </View>
                     </TouchableOpacity>
 
-                    {showDatePicker && (
+                    {showDatePicker ? (
                         <DateTimePicker
                             value={date}
                             mode="date"
@@ -303,7 +400,7 @@ const EditTransactionScreen = ({ navigation, route }: any) => {
                                 if (selectedDate) setDate(selectedDate);
                             }}
                         />
-                    )}
+                    ) : null}
 
                     <View style={[styles.detailItem, { backgroundColor: themeColors.surface, borderColor: themeColors.border, marginTop: 12 }]}>
                         <FileText size={20} color={accentColor} style={{ marginRight: 12 }} />
@@ -325,17 +422,39 @@ const EditTransactionScreen = ({ navigation, route }: any) => {
                                 <ImageIcon size={20} color={accentColor} />
                                 <Text style={{ color: themeColors.text }}>{receiptUri ? 'Receipt Attached' : 'Add Receipt (Optional)'}</Text>
                             </View>
-                            {receiptUri && (
+                            {receiptUri ? (
                                 <TouchableOpacity onPress={() => setReceiptUri(null)}>
                                     <X size={16} color="#EF4444" />
                                 </TouchableOpacity>
-                            )}
+                            ) : null}
                         </View>
                     </TouchableOpacity>
 
-                    {receiptUri && (
+                    {receiptUri ? (
                         <Image source={{ uri: receiptUri }} style={styles.receiptPreview} />
-                    )}
+                    ) : null}
+
+                    {historicalNAV ? (
+                        <View style={[styles.histNavInfo, { backgroundColor: themeColors.surface, borderColor: themeColors.border }]}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                                    <TrendingUp size={16} color={accentColor} />
+                                    <View>
+                                        <Text style={{ color: themeColors.text, fontSize: 13, fontWeight: '700' }}>NAV for Transaction</Text>
+                                        <Text style={{ color: themeColors.textSecondary, fontSize: 11 }}>Date: {format(date, 'MMM d, yyyy')}</Text>
+                                    </View>
+                                </View>
+                                <View style={{ alignItems: 'flex-end' }}>
+                                    <Text style={{ color: accentColor, fontSize: 18, fontWeight: '800' }}>{historicalNAV}</Text>
+                                    {amount && parseFloat(amount.replace(/,/g, '')) > 0 ? (
+                                        <Text style={{ color: '#10B981', fontSize: 11, fontWeight: '600' }}>
+                                            ≈ {(parseFloat(amount.replace(/,/g, '')) / historicalNAV).toFixed(4)} Units
+                                        </Text>
+                                    ) : null}
+                                </View>
+                            </View>
+                        </View>
+                    ) : null}
                 </View>
 
                 <View style={{ flexDirection: 'row', gap: 15, marginTop: 10, marginBottom: 40 }}>
@@ -393,13 +512,22 @@ const styles = StyleSheet.create({
         gap: 8,
     },
     accountGridItem: {
-        height: 36,
         flexDirection: 'row',
         alignItems: 'center',
         paddingHorizontal: 12,
-        borderRadius: 18,
+        paddingVertical: 8,
+        borderRadius: 20,
         borderWidth: 1,
-        gap: 6,
+        gap: 8,
+    },
+    tab: {
+        paddingHorizontal: 20,
+        paddingVertical: 10,
+        alignItems: 'center',
+        borderRadius: 8,
+    },
+    tabsContainer: {
+        paddingRight: 10,
     },
     accIconBox: {
         width: 24,
@@ -407,6 +535,13 @@ const styles = StyleSheet.create({
         borderRadius: 12,
         justifyContent: 'center',
         alignItems: 'center',
+    },
+    tabText: { fontSize: 13, fontWeight: '600' },
+    tabs: {
+        flexDirection: 'row',
+        borderRadius: 12,
+        padding: 4,
+        marginBottom: 24,
     },
     accountGridName: { fontSize: 12, fontWeight: '600' },
     staticTypeLabel: {
@@ -441,6 +576,12 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
         borderRadius: 16,
+        borderWidth: 1,
+    },
+    histNavInfo: {
+        marginTop: 12,
+        padding: 12,
+        borderRadius: 12,
         borderWidth: 1,
     },
     saveButtonText: {

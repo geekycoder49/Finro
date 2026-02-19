@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "HysabKytabPro",
+    "name": "Finro",
     "slug": "HysabKytabPro",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "newArchEnabled": false,
     "splash": {
       "image": "./assets/splash-icon.png",
@@ -22,18 +22,20 @@
       },
       "edgeToEdgeEnabled": false,
       "predictiveBackGestureEnabled": false,
-      "package": "com.talhabajwa.HysabKytabPro"
+      "package": "com.talhabajwa.finro"
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      "expo-asset"
     ],
     "extra": {
       "eas": {
         "projectId": "e018f4cc-1b97-4d9a-bdca-5c0a8dee913c"
       }
-    }
+    },
+    "owner": "talhabajwa"
   }
 }
