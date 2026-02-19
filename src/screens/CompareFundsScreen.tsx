@@ -123,37 +123,42 @@ const CompareFundsScreen = () => {
                         let matchedAMC = 'Other';
 
                         for (const [amc, funds] of Object.entries(FUNDS_DATA)) {
-                            // Try exact match first (highest priority)
-                            let match = (funds as FundDetails[]).find(fd => fd.name.toLowerCase() === fundNameLower);
+                            // First try to find all matching funds by name
+                            const nameMatches = (funds as FundDetails[]).filter(fd => {
+                                const fdNameLower = fd.name.toLowerCase();
+                                const normalizedStaticName = fdNameLower.replace(/[^a-z0-9]/g, '');
 
-                            if (!match) {
-                                // Fuzzy match for variants
-                                match = (funds as FundDetails[]).find(fd => {
-                                    const fdNameLower = fd.name.toLowerCase();
-                                    const normalizedStaticName = fdNameLower.replace(/[^a-z0-9]/g, '');
+                                if (normalizedStaticName === normalizedApiName) return true;
 
-                                    // 1. Normalized exact match
-                                    if (normalizedStaticName === normalizedApiName) return true;
+                                const isMatch = normalizedApiName.includes(normalizedStaticName) || normalizedStaticName.includes(normalizedApiName);
+                                if (isMatch) {
+                                    if (fd.type) return true; // We will disambiguate by category below
 
-                                    // 2. Cross-inclusion check
-                                    const isMatch = normalizedApiName.includes(normalizedStaticName) || normalizedStaticName.includes(normalizedApiName);
-
-                                    // 3. For variants (Debt, Equity, Money Market), ensure the specific type matches
-                                    if (isMatch) {
-                                        const variants = ['debt', 'equity', 'money market', 'cash'];
-                                        for (const v of variants) {
-                                            const apiHasV = fundNameLower.includes(v);
-                                            const staticHasV = fdNameLower.includes(v);
-                                            if (apiHasV !== staticHasV) return false; // If one has "debt" and other doesn't, it's NOT a match
-                                        }
-                                        return true;
+                                    const variants = ['debt', 'equity', 'money market', 'cash'];
+                                    for (const v of variants) {
+                                        const apiHasV = fundNameLower.includes(v);
+                                        const staticHasV = fdNameLower.includes(v);
+                                        if (apiHasV !== staticHasV) return false;
                                     }
-                                    return false;
-                                });
-                            }
+                                    return true;
+                                }
+                                return false;
+                            });
 
-                            if (match) {
-                                staticMatch = match;
+                            if (nameMatches.length > 0) {
+                                // If multiple matches, disambiguate by category/type from API
+                                if (nameMatches.length > 1 && f.category) {
+                                    const bestMatch = nameMatches.find(match =>
+                                        match.type && f.category.toLowerCase().includes(match.type.toLowerCase())
+                                    );
+                                    if (bestMatch) {
+                                        staticMatch = bestMatch;
+                                    } else {
+                                        staticMatch = nameMatches[0];
+                                    }
+                                } else {
+                                    staticMatch = nameMatches[0];
+                                }
                                 matchedAMC = amc;
                                 break;
                             }
