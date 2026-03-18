@@ -6,7 +6,7 @@ import { DARK_THEME, LIGHT_THEME } from '../theme/colors';
 import { useTheme } from '../hooks/useTheme';
 import { getAccounts, Account, updateNAV } from '../db/database';
 import { ScreenWrapper } from '../components/ScreenWrapper';
-import { TrendingUp, TrendingDown, Shield, ShieldAlert, ShieldCheck, Plus, ChevronRight, Save, X, ChevronDown, Moon, Settings, BarChart2, RefreshCw, CloudDownload } from 'lucide-react-native';
+import { TrendingUp, TrendingDown, Shield, ShieldAlert, ShieldCheck, Plus, ChevronRight, ChevronLeft, Save, X, ChevronDown, Moon, Settings, BarChart2, RefreshCw, CloudDownload } from 'lucide-react-native';
 import { getNAVHistory, getSetting } from '../db/database';
 import Svg, { Path } from 'react-native-svg';
 import { getAMCIconSource } from '../utils/amcIcons';
@@ -28,6 +28,18 @@ const MutualFundsScreen = ({ navigation }: any) => {
     const [selectedFundId, setSelectedFundId] = useState<number | null>(null);
     const [updateValue, setUpdateValue] = useState('');
     const [isSyncing, setIsSyncing] = useState(false);
+    const [currentTab, setCurrentTab] = useState<'Mutual Funds' | 'Stocks' | 'Commodities'>('Mutual Funds');
+
+    const tabs: ('Mutual Funds' | 'Stocks' | 'Commodities')[] = ['Mutual Funds', 'Stocks', 'Commodities'];
+
+    const handleTabChange = (direction: 'next' | 'prev') => {
+        const curIdx = tabs.indexOf(currentTab);
+        if (direction === 'next') {
+            setCurrentTab(tabs[(curIdx + 1) % tabs.length]);
+        } else {
+            setCurrentTab(tabs[(curIdx - 1 + tabs.length) % tabs.length]);
+        }
+    };
 
     useFocusEffect(
         useCallback(() => {
@@ -82,20 +94,24 @@ const MutualFundsScreen = ({ navigation }: any) => {
 
     return (
         <ScreenWrapper>
-            <View style={styles.header}>
-                <Text style={[styles.title, { color: themeColors.text }]}>Mutual Funds</Text>
-                <View style={{ flexDirection: 'row', gap: 10 }}>
-                    <TouchableOpacity
-                        style={[styles.addBtn, { backgroundColor: accentColor }]}
-                        onPress={() => navigation.navigate('AddAccount', { initialType: 'MUTUAL_FUND' })}
-                    >
-                        <Plus color="white" size={20} />
-                        <Text style={styles.addBtnText}>New Fund</Text>
-                    </TouchableOpacity>
-                </View>
+            <View style={[styles.header, { justifyContent: 'center' }]}>
+                <TouchableOpacity onPress={() => handleTabChange('prev')} style={{ padding: 10 }}>
+                    <ChevronLeft color={themeColors.text} size={28} />
+                </TouchableOpacity>
+                <Text style={[styles.title, { color: themeColors.text, textAlign: 'center', width: 220 }]}>{currentTab}</Text>
+                <TouchableOpacity onPress={() => handleTabChange('next')} style={{ padding: 10 }}>
+                    <ChevronRight color={themeColors.text} size={28} />
+                </TouchableOpacity>
             </View>
 
-
+            {currentTab !== 'Mutual Funds' ? (
+                <View style={styles.comingSoonContainer}>
+                    <TrendingUp size={60} color={themeColors.border} />
+                    <Text style={[styles.comingSoonText, { color: themeColors.text }]}>{currentTab}</Text>
+                    <Text style={[styles.comingSoonSubtext, { color: themeColors.textSecondary }]}>Coming Soon</Text>
+                </View>
+            ) : (
+                <>
             {(() => {
                 const totalPrincipal = funds.reduce((sum, f) => sum + (f.principalAmount || 0), 0);
                 const totalProfit = totalInvestment - totalPrincipal;
@@ -174,36 +190,50 @@ const MutualFundsScreen = ({ navigation }: any) => {
                         </View>
 
                         <TouchableOpacity
-                            style={[styles.compareBar, { backgroundColor: themeColors.surface, borderColor: themeColors.border }]}
+                            style={[styles.compareBar, { backgroundColor: themeColors.surface, borderColor: themeColors.border, marginBottom: 12 }]}
                             onPress={() => navigation.navigate('CompareFunds')}
                         >
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
                                 <View style={[styles.compareIconBox, { backgroundColor: accentColor + '20' }]}>
                                     <BarChart2 color={accentColor} size={20} />
                                 </View>
-                                <View>
-                                    <Text style={[styles.compareTitle, { color: themeColors.text }]}>Compare Funds</Text>
-                                    <Text style={[styles.compareSubtitle, { color: themeColors.textSecondary }]}>Analyze performance across 300+ funds</Text>
+                                <View style={{ flex: 1 }}>
+                                    <Text style={[styles.compareTitle, { color: themeColors.text }]}>Funds Stats</Text>
+                                    <Text style={[styles.compareSubtitle, { color: themeColors.textSecondary }]} numberOfLines={1}>Analyze 300+ funds</Text>
                                 </View>
                             </View>
                             <ChevronRight color={themeColors.textSecondary} size={20} />
                         </TouchableOpacity>
 
-                        <View style={{ flexDirection: 'row', gap: 12 }}>
+                        <View style={{ flexDirection: 'row', gap: 10 }}>
                             <TouchableOpacity
-                                style={[styles.globalUpdateBtn, { backgroundColor: themeColors.surface, borderColor: themeColors.border }]}
-                                onPress={() => setShowUpdateModal(true)}
+                                style={[styles.threeColBtn, { backgroundColor: themeColors.surface, borderColor: themeColors.border }]}
+                                onPress={() => navigation.navigate('AddAccount', { initialType: 'MUTUAL_FUND' })}
                             >
-                                <TrendingUp color={accentColor} size={20} />
-                                <Text style={[styles.globalUpdateText, { color: themeColors.text }]}>Update NAVs</Text>
+                                <View style={[styles.actionIconBox, { backgroundColor: accentColor + '15' }]}>
+                                    <Plus color={accentColor} size={22} />
+                                </View>
+                                <Text style={[styles.threeColBtnText, { color: themeColors.text }]} numberOfLines={1}>Add Fund</Text>
                             </TouchableOpacity>
 
                             <TouchableOpacity
-                                style={[styles.globalUpdateBtn, { backgroundColor: themeColors.surface, borderColor: themeColors.border }]}
+                                style={[styles.threeColBtn, { backgroundColor: themeColors.surface, borderColor: themeColors.border }]}
+                                onPress={() => setShowUpdateModal(true)}
+                            >
+                                <View style={[styles.actionIconBox, { backgroundColor: accentColor + '15' }]}>
+                                    <TrendingUp color={accentColor} size={22} />
+                                </View>
+                                <Text style={[styles.threeColBtnText, { color: themeColors.text }]} numberOfLines={1}>Update NAV</Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                                style={[styles.threeColBtn, { backgroundColor: themeColors.surface, borderColor: themeColors.border }]}
                                 onPress={() => navigation.navigate('MutualFundReport')}
                             >
-                                <BarChart2 color="#8B5CF6" size={20} />
-                                <Text style={[styles.globalUpdateText, { color: themeColors.text }]}>View Report</Text>
+                                <View style={[styles.actionIconBox, { backgroundColor: '#8B5CF615' }]}>
+                                    <BarChart2 color="#8B5CF6" size={22} />
+                                </View>
+                                <Text style={[styles.threeColBtnText, { color: themeColors.text }]} numberOfLines={1}>View Report</Text>
                             </TouchableOpacity>
                         </View>
                     </View>
@@ -298,6 +328,8 @@ const MutualFundsScreen = ({ navigation }: any) => {
                     </View>
                 )}
             </ScrollView>
+            </>
+            )}
             {/* Global NAV Update Modal */}
             <Modal visible={showUpdateModal} transparent animationType="slide">
                 <View style={styles.modalOverlay}>
@@ -377,11 +409,13 @@ const MutualFundsScreen = ({ navigation }: any) => {
 };
 
 const styles = StyleSheet.create({
-    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
+    header: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginBottom: 24 },
     title: { fontSize: 24, fontWeight: '900' },
-    addBtn: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, gap: 6 },
-    settingsIconBtn: { width: 44, height: 44, borderRadius: 22, borderWidth: 1, justifyContent: 'center', alignItems: 'center' },
-    addBtnText: { color: 'white', fontWeight: '700', fontSize: 13 },
+    comingSoonContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingBottom: 100 },
+    comingSoonText: { fontSize: 24, fontWeight: '900', marginTop: 16, marginBottom: 8 },
+    comingSoonSubtext: { fontSize: 14, fontWeight: '600' },
+    addBtnLeft: { flexDirection: 'column', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16, borderRadius: 20, gap: 4, paddingVertical: 10 },
+    addBtnLeftText: { color: 'white', fontWeight: '700', fontSize: 11 },
     totalCard: { padding: 24, borderRadius: 24, elevation: 5, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 10 },
     totalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
     totalLabel: { color: 'rgba(255,255,255,0.8)', fontSize: 13, fontWeight: '600', marginBottom: 4 },
@@ -396,8 +430,9 @@ const styles = StyleSheet.create({
     footerItem: {},
     footerLabel: { color: 'rgba(255,255,255,0.7)', fontSize: 9, fontWeight: '600', marginBottom: 2 },
     footerValue: { color: 'white', fontSize: 11, fontWeight: '800' },
-    globalUpdateBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 12, borderRadius: 16, borderWidth: 1, gap: 8 },
-    globalUpdateText: { fontSize: 14, fontWeight: '700' },
+    threeColBtn: { flex: 1, flexDirection: 'column', alignItems: 'center', justifyContent: 'center', paddingTop: 14, paddingBottom: 12, borderRadius: 16, borderWidth: 1, gap: 8 },
+    threeColBtnText: { fontSize: 11, fontWeight: '700', textAlign: 'center' },
+    actionIconBox: { width: 42, height: 42, borderRadius: 21, justifyContent: 'center', alignItems: 'center' },
     sectionTitle: { fontSize: 18, fontWeight: '800', marginBottom: 16 },
     fundCard: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderRadius: 20, borderWidth: 1, marginBottom: 12 },
     fundInfo: { flex: 1, gap: 4 },
