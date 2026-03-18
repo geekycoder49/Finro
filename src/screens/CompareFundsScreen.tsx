@@ -108,15 +108,23 @@ const CompareFundsScreen = () => {
                 ]);
 
                 if (returnsData && Array.isArray(returnsData)) {
+                    // Track occurrences to handle duplicate fund names properly
+                    const navOccurrences = new Map<string, number>();
+
                     const enriched = returnsData.map((f: any) => {
                         const fundName = f.fund;
                         const fundNameLower = fundName.toLowerCase();
 
+                        // Handle duplicate occurrences to fetch correct NAV category sequentially
+                        const occurrences = navOccurrences.get(fundNameLower) || 0;
+                        navOccurrences.set(fundNameLower, occurrences + 1);
+
                         // Normalize API name: remove punctuation, spaces, and common noise
                         const normalizedApiName = fundNameLower.replace(/[^a-z0-9]/g, '');
 
-                        // Find corresponding NAV and Category from NAV API
-                        const navMatch = navsData.find(n => n.fund.toLowerCase() === fundNameLower);
+                        // Find corresponding NAV and Category from NAV API sequentially
+                        const matchingNavs = navsData.filter(n => n.fund.toLowerCase() === fundNameLower);
+                        const navMatch = matchingNavs[occurrences] || matchingNavs[0];
 
                         // Try to find in our static FUNDS_DATA first for high accuracy
                         let staticMatch: FundDetails | undefined;
@@ -147,9 +155,9 @@ const CompareFundsScreen = () => {
 
                             if (nameMatches.length > 0) {
                                 // If multiple matches, disambiguate by category/type from API
-                                if (nameMatches.length > 1 && f.category) {
+                                if (nameMatches.length > 1 && navMatch && navMatch.category) {
                                     const bestMatch = nameMatches.find(match =>
-                                        match.type && f.category.toLowerCase().includes(match.type.toLowerCase())
+                                        match.type && navMatch.category.toLowerCase().includes(match.type.toLowerCase())
                                     );
                                     if (bestMatch) {
                                         staticMatch = bestMatch;
