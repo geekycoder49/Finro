@@ -1,7 +1,7 @@
 import { getAccounts, updateNAV, Account, upsertHistoricalNAV } from '../db/database';
 import { useSettingsStore } from '../store/useSettingsStore';
 
-const NAV_API_URL = 'https://geekycoder49.github.io/mufap-backend/nav.json';
+const NAV_API_URL = 'https://geekycoder49.github.io/mufap-backend/navs.json';
 const RETURNS_API_URL = 'https://mufap-nav-api.onrender.com/returns/latest';
 
 export interface NAVData {
