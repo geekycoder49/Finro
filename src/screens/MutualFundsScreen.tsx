@@ -13,6 +13,7 @@ import { getAMCIconSource } from '../utils/amcIcons';
 import { getInitials } from '../utils/helpers';
 import { syncAllFunds } from '../services/navSync';
 import ShariahIcon from '../components/ShariahIcon';
+import KSELiveScreen from '../../KSELiveScreen';
 
 
 
@@ -189,23 +190,22 @@ const MutualFundsScreen = ({ navigation }: any) => {
                             </View>
                         </View>
 
-                        <TouchableOpacity
-                            style={[styles.compareBar, { backgroundColor: themeColors.surface, borderColor: themeColors.border, marginBottom: 12 }]}
-                            onPress={() => navigation.navigate('CompareFunds')}
-                        >
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
-                                <View style={[styles.compareIconBox, { backgroundColor: accentColor + '20' }]}>
-                                    <BarChart2 color={accentColor} size={20} />
-                                </View>
-                                <View style={{ flex: 1 }}>
-                                    <Text style={[styles.compareTitle, { color: themeColors.text }]}>Funds Stats</Text>
-                                    <Text style={[styles.compareSubtitle, { color: themeColors.textSecondary }]} numberOfLines={1}>Analyze 300+ funds</Text>
-                                </View>
-                            </View>
-                            <ChevronRight color={themeColors.textSecondary} size={20} />
-                        </TouchableOpacity>
+                        {/* KSE PILL */}
+                        <View style={{ marginBottom: 12 }}>
+                             <KSELiveScreen />
+                        </View>
 
                         <View style={{ flexDirection: 'row', gap: 10 }}>
+                            <TouchableOpacity
+                                style={[styles.threeColBtn, { backgroundColor: themeColors.surface, borderColor: themeColors.border }]}
+                                onPress={() => navigation.navigate('CompareFunds')}
+                            >
+                                <View style={[styles.actionIconBox, { backgroundColor: accentColor + '20' }]}>
+                                    <BarChart2 color={accentColor} size={22} />
+                                </View>
+                                <Text style={[styles.threeColBtnText, { color: themeColors.text }]} numberOfLines={1}>Funds Stats</Text>
+                            </TouchableOpacity>
+
                             <TouchableOpacity
                                 style={[styles.threeColBtn, { backgroundColor: themeColors.surface, borderColor: themeColors.border }]}
                                 onPress={() => navigation.navigate('AddAccount', { initialType: 'MUTUAL_FUND' })}
@@ -240,7 +240,7 @@ const MutualFundsScreen = ({ navigation }: any) => {
                 );
             })()}
 
-            <Text style={[styles.sectionTitle, { color: themeColors.text, marginTop: 30 }]}>My Portfolio</Text>
+            <Text style={[styles.sectionTitle, { color: themeColors.text, marginTop: 20 }]}>My Portfolio</Text>
 
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
                 {funds.length > 0 ? (

@@ -2,7 +2,7 @@ import { getAccounts, updateNAV, Account, upsertHistoricalNAV } from '../db/data
 import { useSettingsStore } from '../store/useSettingsStore';
 
 const NAV_API_URL = 'https://geekycoder49.github.io/mufap-backend/navs.json';
-const RETURNS_API_URL = 'https://mufap-nav-api.onrender.com/returns/latest';
+const RETURNS_API_URL = 'https://geekycoder49.github.io/mufap-backend/returns.json';
 
 export interface NAVData {
     fund: string;
@@ -21,10 +21,16 @@ export interface SyncResult {
 let isSyncingInProgress = false;
 let currentSyncPromise: Promise<SyncResult> | null = null;
 
+let memoryCachedNAVs: { timestamp: number, data: NAVData[] } | null = null;
+
 /**
  * Fetches the latest NAVs from the Render API with timeout
  */
-export const fetchLatestNAVs = async (): Promise<NAVData[]> => {
+export const fetchLatestNAVs = async (forceOptions = { force: false }): Promise<NAVData[]> => {
+    if (!forceOptions.force && memoryCachedNAVs && Date.now() - memoryCachedNAVs.timestamp < 1000 * 60 * 60 * 12) {
+        return memoryCachedNAVs.data;
+    }
+
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s timeout
 
@@ -40,7 +46,9 @@ export const fetchLatestNAVs = async (): Promise<NAVData[]> => {
             throw new Error('Invalid NAV API response format');
         }
 
-        return json.data as NAVData[];
+
+        memoryCachedNAVs = { timestamp: Date.now(), data: json.data as NAVData[] };
+        return memoryCachedNAVs.data;
     } catch (error: any) {
         clearTimeout(timeoutId);
         if (error.name === 'AbortError') {
@@ -70,7 +78,7 @@ export const syncAllFunds = async (): Promise<SyncResult> => {
         };
 
         try {
-            const apiData = await fetchLatestNAVs();
+            const apiData = await fetchLatestNAVs({ force: true });
 
             // Populate Historical DB with all latest data
             apiData.forEach(f => {

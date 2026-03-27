@@ -4,8 +4,9 @@ import { useNavigation } from '@react-navigation/native';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTheme } from '../hooks/useTheme';
 import { ScreenWrapper } from '../components/ScreenWrapper';
-import { ArrowLeft, Search, ChevronUp, ChevronDown, ShieldCheck, ChevronRight, X, Filter } from 'lucide-react-native';
+import { ArrowLeft, Search, ChevronUp, ChevronDown, ShieldCheck, ChevronRight, X, Filter, TrendingUp } from 'lucide-react-native';
 import { syncFundReturns, fetchLatestNAVs } from '../services/navSync';
+import * as FileSystem from 'expo-file-system/legacy';
 import ShariahIcon from '../components/ShariahIcon';
 import { getAMCIconSource, AMC_ICON_MAP } from '../utils/amcIcons';
 import { FUNDS_DATA, FundDetails } from '../constants/fundsData';
@@ -82,6 +83,8 @@ const Dropdown = ({ label, options, selectedValue, onSelect, themeColors, accent
     );
 };
 
+let MEMORY_CACHE: { timestamp: number, data: FundReturn[] } | null = null;
+
 const CompareFundsScreen = () => {
     const navigation = useNavigation();
     const { accentColor } = useSettingsStore();
@@ -96,11 +99,37 @@ const CompareFundsScreen = () => {
     const [selectedAMC, setSelectedAMC] = useState('ALL');
     const [selectedCompliance, setSelectedCompliance] = useState('ALL'); // Conventional, Shariah
     const [selectedRisk, setSelectedRisk] = useState('ALL'); // LOW, MEDIUM, HIGH
+    
+    // Top Performers Tab
+    const [topRiskTab, setTopRiskTab] = useState<'HIGH' | 'MEDIUM' | 'LOW'>('HIGH');
 
     useEffect(() => {
         const loadData = async () => {
+            // Memory Intercept
+            if (MEMORY_CACHE && Date.now() - MEMORY_CACHE.timestamp < 1000 * 60 * 60 * 12) {
+                setAllFunds(MEMORY_CACHE.data);
+                setFilteredFunds(MEMORY_CACHE.data);
+                setIsLoading(false);
+                return;
+            }
+
             setIsLoading(true);
             try {
+                // Disk Caching Fallback Intercept
+                const CACHE_PATH = FileSystem.documentDirectory + 'finro_funds_cache_v2.json';
+                const cacheInfo = await FileSystem.getInfoAsync(CACHE_PATH);
+                if (cacheInfo.exists) {
+                    const cacheStr = await FileSystem.readAsStringAsync(CACHE_PATH);
+                    const cacheObj = JSON.parse(cacheStr);
+                    if (cacheObj.timestamp && Date.now() - cacheObj.timestamp < 1000 * 60 * 60 * 12) {
+                        MEMORY_CACHE = { timestamp: cacheObj.timestamp, data: cacheObj.data };
+                        setAllFunds(cacheObj.data);
+                        setFilteredFunds(cacheObj.data);
+                        setIsLoading(false);
+                        return; 
+                    }
+                }
+
                 // Fetch both Return data and NAV data to merge them
                 const [returnsData, navsData] = await Promise.all([
                     syncFundReturns(),
@@ -273,8 +302,19 @@ const CompareFundsScreen = () => {
                     // Sort by name initially
                     enriched.sort((a, b) => a.fund.localeCompare(b.fund));
 
-                    setAllFunds(enriched);
-                    setFilteredFunds(enriched);
+                    const finalData = enriched;
+                    setAllFunds(finalData);
+                    setFilteredFunds(finalData);
+                    
+                    const timestamp = Date.now();
+                    MEMORY_CACHE = { timestamp, data: finalData };
+                    
+                    // Save to Disk Cache
+                    const CACHE_PATH = FileSystem.documentDirectory + 'finro_funds_cache_v2.json';
+                    await FileSystem.writeAsStringAsync(CACHE_PATH, JSON.stringify({
+                        timestamp,
+                        data: finalData
+                    }));
                 }
             } catch (error) {
                 console.error('Failed to load fund returns:', error);
@@ -316,6 +356,13 @@ const CompareFundsScreen = () => {
             </View>
         );
     };
+
+    const top5Performers = useMemo(() => {
+        if (!allFunds || allFunds.length === 0) return [];
+        const fundsInRisk = allFunds.filter(f => f.risk === topRiskTab && typeof f.returns['1d'] === 'number');
+        fundsInRisk.sort((a, b) => (b.returns['1d'] || 0) - (a.returns['1d'] || 0));
+        return fundsInRisk.slice(0, 5);
+    }, [allFunds, topRiskTab]);
 
     return (
         <ScreenWrapper>
@@ -368,6 +415,58 @@ const CompareFundsScreen = () => {
                     onChangeText={setSearchQuery}
                 />
             </View>
+
+            {/* Top Performers Section */}
+            {!isLoading && allFunds.length > 0 && searchQuery === '' && (
+                <View style={{ marginBottom: 20 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12, paddingHorizontal: 4 }}>
+                        <TrendingUp color={accentColor} size={20} />
+                        <Text style={{ fontSize: 16, fontWeight: '800', color: themeColors.text, marginLeft: 8 }}>Top Performers Today</Text>
+                    </View>
+                    
+                    {/* Risk Tabs for Top Performers */}
+                    <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12, paddingHorizontal: 4 }}>
+                        {['HIGH', 'MEDIUM', 'LOW'].map((t) => (
+                            <TouchableOpacity
+                                key={t}
+                                onPress={() => setTopRiskTab(t as any)}
+                                style={{
+                                    paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12,
+                                    backgroundColor: topRiskTab === t ? accentColor : themeColors.surface,
+                                    borderWidth: 1, borderColor: topRiskTab === t ? accentColor : themeColors.border
+                                }}
+                            >
+                                <Text style={{ color: topRiskTab === t ? '#fff' : themeColors.textSecondary, fontWeight: '800', fontSize: 11 }}>
+                                    {t} RISK
+                                </Text>
+                            </TouchableOpacity>
+                        ))}
+                    </View>
+
+                    {/* Top 5 Carousel */}
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12, paddingRight: 20 }}>
+                        {top5Performers.map((fund, idx) => (
+                            <TouchableOpacity
+                                key={`top-${idx}`}
+                                style={[styles.topCard, { backgroundColor: themeColors.surface, borderColor: themeColors.border }]}
+                            >
+                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+                                    <View style={[styles.amcMiniLogo, { backgroundColor: themeColors.background }]}>
+                                        <Image source={getAMCIconSource(fund.amc)} style={{ width: '80%', height: '80%' }} resizeMode="contain" />
+                                    </View>
+                                    <View style={{ backgroundColor: '#10B98120', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                                        <Text style={{ color: '#10B981', fontWeight: '900', fontSize: 13 }}>+{fund.returns['1d']?.toFixed(2)}%</Text>
+                                    </View>
+                                </View>
+                                <Text style={{ fontSize: 13, fontWeight: '800', color: themeColors.text }} numberOfLines={2}>
+                                    {fund.fund}
+                                </Text>
+                                <Text style={{ fontSize: 10, color: themeColors.textSecondary, marginTop: 4, fontWeight: '600' }}>{fund.category}</Text>
+                            </TouchableOpacity>
+                        ))}
+                    </ScrollView>
+                </View>
+            )}
 
             {isLoading ? (
                 <View style={styles.loader}>
@@ -460,6 +559,23 @@ const styles = StyleSheet.create({
     },
     searchInput: { flex: 1, fontSize: 16, fontWeight: '600' },
     loader: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+    topCard: {
+        width: 170,
+        padding: 14,
+        borderRadius: 20,
+        borderWidth: 1,
+        elevation: 1,
+        shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 3
+    },
+    amcMiniLogo: {
+        width: 32,
+        height: 32,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: 'rgba(0,0,0,0.05)',
+        justifyContent: 'center',
+        alignItems: 'center'
+    },
     fundCard: {
         borderRadius: 24,
         borderWidth: 1,
