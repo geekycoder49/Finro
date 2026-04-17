@@ -416,6 +416,36 @@ const EditAccountScreen = ({ navigation, route }: any) => {
                     </View>
                 </View>
 
+                {account.type !== 'MUTUAL_FUND' ? (
+                    <View style={styles.inputContainer}>
+                        <Text style={[styles.label, { color: themeColors.textSecondary }]}>Account Type</Text>
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+                            {['CASH', 'PERSON', 'BANK', 'WALLET'].map(t => (
+                                <TouchableOpacity
+                                    key={t}
+                                    onPress={() => setType(t as any)}
+                                    style={{
+                                        paddingHorizontal: 16,
+                                        paddingVertical: 10,
+                                        borderRadius: 12,
+                                        borderWidth: 1,
+                                        borderColor: type === t ? accentColor : themeColors.border,
+                                        backgroundColor: type === t ? accentColor + '20' : themeColors.surface
+                                    }}
+                                >
+                                    <Text style={{ 
+                                        color: type === t ? accentColor : themeColors.text, 
+                                        fontWeight: '700',
+                                        fontSize: 13
+                                    }}>
+                                        {t}
+                                    </Text>
+                                </TouchableOpacity>
+                            ))}
+                        </ScrollView>
+                    </View>
+                ) : null}
+
                 {type === 'MUTUAL_FUND' ? (
                     <View style={{ marginBottom: 24 }}>
                         <Text style={[styles.label, { color: themeColors.textSecondary }]}>Asset Management Company</Text>

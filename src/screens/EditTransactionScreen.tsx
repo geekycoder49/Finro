@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, Alert, Image, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, Alert, Image, Platform, KeyboardAvoidingView } from 'react-native';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { DARK_THEME, LIGHT_THEME } from '../theme/colors';
 import { useTheme } from '../hooks/useTheme';
@@ -43,7 +43,7 @@ const EditTransactionScreen = ({ navigation, route }: any) => {
     const [showDatePicker, setShowDatePicker] = useState(false);
     const [description, setDescription] = useState('');
     const [receiptUri, setReceiptUri] = useState<string | null>(null);
-    const [historicalNAV, setHistoricalNAV] = useState<number | null>(null);
+    const [historicalNAV, setHistoricalNAV] = useState<string | number | null>(null);
     const [isLoadingHistNAV, setIsLoadingHistNAV] = useState(false);
 
     const formatWithCommas = (value: string) => {
@@ -159,7 +159,7 @@ const EditTransactionScreen = ({ navigation, route }: any) => {
             date.toISOString(),
             receiptUri || undefined,
             undefined, // cgtAmount placeholder
-            historicalNAV || undefined
+            parseFloat(historicalNAV?.toString() || '0') || undefined
         );
 
         navigation.goBack();
@@ -216,7 +216,12 @@ const EditTransactionScreen = ({ navigation, route }: any) => {
 
     return (
         <ScreenWrapper>
-            <ScrollView showsVerticalScrollIndicator={false}>
+            <KeyboardAvoidingView 
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 80}
+                style={{ flex: 1 }}
+            >
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
                 <View style={styles.header}>
                     <TouchableOpacity onPress={() => navigation.goBack()}>
                         <X color={themeColors.text} size={28} />
@@ -434,7 +439,7 @@ const EditTransactionScreen = ({ navigation, route }: any) => {
                         <Image source={{ uri: receiptUri }} style={styles.receiptPreview} />
                     ) : null}
 
-                    {historicalNAV ? (
+                    {historicalNAV !== null ? (
                         <View style={[styles.histNavInfo, { backgroundColor: themeColors.surface, borderColor: themeColors.border }]}>
                             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
@@ -445,10 +450,19 @@ const EditTransactionScreen = ({ navigation, route }: any) => {
                                     </View>
                                 </View>
                                 <View style={{ alignItems: 'flex-end' }}>
-                                    <Text style={{ color: accentColor, fontSize: 18, fontWeight: '800' }}>{historicalNAV}</Text>
+                                    <View style={{ borderBottomWidth: 1, borderBottomColor: accentColor + '40', paddingBottom: 2 }}>
+                                        <TextInput
+                                            style={{ color: accentColor, fontSize: 18, fontWeight: '800', textAlign: 'right', minWidth: 60, padding: 0 }}
+                                            keyboardType="numeric"
+                                            value={historicalNAV?.toString() || ''}
+                                            onChangeText={(val) => setHistoricalNAV(val)}
+                                            placeholder="0.00"
+                                            placeholderTextColor={themeColors.textSecondary}
+                                        />
+                                    </View>
                                     {amount && parseFloat(amount.replace(/,/g, '')) > 0 ? (
-                                        <Text style={{ color: '#10B981', fontSize: 11, fontWeight: '600' }}>
-                                            ≈ {(parseFloat(amount.replace(/,/g, '')) / historicalNAV).toFixed(4)} Units
+                                        <Text style={{ color: '#10B981', fontSize: 11, fontWeight: '600', marginTop: 4 }}>
+                                            ≈ {(parseFloat(amount.replace(/,/g, '')) / (parseFloat(historicalNAV?.toString() || '0') || 1)).toFixed(4)} Units
                                         </Text>
                                     ) : null}
                                 </View>
@@ -473,6 +487,7 @@ const EditTransactionScreen = ({ navigation, route }: any) => {
                     </TouchableOpacity>
                 </View>
             </ScrollView>
+            </KeyboardAvoidingView>
         </ScreenWrapper>
     );
 };

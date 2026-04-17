@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, FlatList, ScrollView, Image, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, FlatList, ScrollView, Image, Platform, KeyboardAvoidingView } from 'react-native';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { DARK_THEME, LIGHT_THEME } from '../theme/colors';
 import { ScreenWrapper } from '../components/ScreenWrapper';
@@ -46,7 +46,7 @@ const AddTransactionScreen = ({ navigation, route }: any) => {
     const [receiptUri, setReceiptUri] = useState<string | null>(null);
     const [isCGTEnabled, setIsCGTEnabled] = useState(false);
     const [calculatedCGT, setCalculatedCGT] = useState(0);
-    const [historicalNAV, setHistoricalNAV] = useState<number | null>(null);
+    const [historicalNAV, setHistoricalNAV] = useState<string | number | null>(null);
     const [isLoadingHistNAV, setIsLoadingHistNAV] = useState(false);
 
     useEffect(() => {
@@ -96,7 +96,8 @@ const AddTransactionScreen = ({ navigation, route }: any) => {
         const fromAcc = accounts.find(a => a.id === selectedFromAccount);
 
         if (amt > 0 && fromAcc && fromAcc.type === 'MUTUAL_FUND') {
-            const redemptionNAV = historicalNAV || fromAcc.currentNAV || 0;
+            const parsedNAV = parseFloat(historicalNAV?.toString() || '0');
+            const redemptionNAV = parsedNAV || fromAcc.currentNAV || 0;
             const unitsOwned = fromAcc.unitsOwned || 0;
             const principal = fromAcc.principalAmount || 0;
 
@@ -248,7 +249,7 @@ const AddTransactionScreen = ({ navigation, route }: any) => {
             receiptUri || undefined,
             isMFRedemption ? 0 : calculatedCGT, // Store 0 if we split, or the amount if legacy (though we don't use it much now)
             0,
-            historicalNAV || undefined
+            parseFloat(historicalNAV?.toString() || '0') // Buy Price (Historical NAV)
         );
 
         if (isMFRedemption) {
@@ -264,7 +265,7 @@ const AddTransactionScreen = ({ navigation, route }: any) => {
                 undefined,
                 0,
                 1, // isSystem = 1
-                historicalNAV || undefined  // ← use redemption NAV so correct units are cut
+                parseFloat(historicalNAV?.toString() || '0') || undefined  // ← use redemption NAV so correct units are cut
             );
         }
 
@@ -304,8 +305,13 @@ const AddTransactionScreen = ({ navigation, route }: any) => {
 
     return (
         <ScreenWrapper>
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
-                <View style={styles.header}>
+            <KeyboardAvoidingView 
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 80}
+                style={{ flex: 1 }}
+            >
+                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
+                    <View style={styles.header}>
                     <TouchableOpacity onPress={() => navigation.goBack()}>
                         <X color={themeColors.text} size={28} />
                     </TouchableOpacity>
@@ -319,30 +325,21 @@ const AddTransactionScreen = ({ navigation, route }: any) => {
                     contentContainerStyle={styles.tabsContainer}
                     style={[styles.tabs, { backgroundColor: themeColors.surface }]}
                 >
-                    {TABS.map(tab => {
-                        const mfCount = accounts.filter(a => a.type === 'MUTUAL_FUND').length;
-                        const isInvestmentDisabled = tab === 'Investment' && mfCount === 0;
-
-                        return (
-                            <TouchableOpacity
-                                key={tab}
-                                onPress={() => {
-                                    if (!isInvestmentDisabled) {
-                                        setActiveTab(tab);
-                                        setSelectedCategory('');
-                                    }
-                                }}
-                                style={[
-                                    styles.tab,
-                                    activeTab === tab ? { backgroundColor: accentColor } : {},
-                                    isInvestmentDisabled ? { opacity: 0.5 } : {}
-                                ]}
-                                disabled={isInvestmentDisabled}
-                            >
-                                <Text style={[styles.tabText, { color: activeTab === tab ? 'white' : themeColors.textSecondary }]}>{tab}</Text>
-                            </TouchableOpacity>
-                        );
-                    })}
+                    {TABS.map(tab => (
+                        <TouchableOpacity
+                            key={tab}
+                            onPress={() => {
+                                setActiveTab(tab);
+                                setSelectedCategory('');
+                            }}
+                            style={[
+                                styles.tab,
+                                activeTab === tab ? { backgroundColor: accentColor } : {}
+                            ]}
+                        >
+                            <Text style={[styles.tabText, { color: activeTab === tab ? 'white' : themeColors.textSecondary }]}>{tab}</Text>
+                        </TouchableOpacity>
+                    ))}
                 </ScrollView>
 
                 <View style={styles.inputContainer}>
@@ -696,7 +693,7 @@ const AddTransactionScreen = ({ navigation, route }: any) => {
                         <Image source={{ uri: receiptUri }} style={styles.receiptPreview} />
                     ) : null}
 
-                    {historicalNAV ? (
+                    {historicalNAV !== null ? (
                         <View style={[styles.histNavInfo, { backgroundColor: themeColors.surface, borderColor: themeColors.border }]}>
                             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
@@ -707,10 +704,19 @@ const AddTransactionScreen = ({ navigation, route }: any) => {
                                     </View>
                                 </View>
                                 <View style={{ alignItems: 'flex-end' }}>
-                                    <Text style={{ color: accentColor, fontSize: 18, fontWeight: '800' }}>{historicalNAV}</Text>
+                                    <View style={{ borderBottomWidth: 1, borderBottomColor: accentColor + '40', paddingBottom: 2 }}>
+                                        <TextInput
+                                            style={{ color: accentColor, fontSize: 18, fontWeight: '800', textAlign: 'right', minWidth: 60, padding: 0 }}
+                                            keyboardType="numeric"
+                                            value={historicalNAV?.toString() || ''}
+                                            onChangeText={(val) => setHistoricalNAV(val)}
+                                            placeholder="0.00"
+                                            placeholderTextColor={themeColors.textSecondary}
+                                        />
+                                    </View>
                                     {amount && parseFloat(amount.replace(/,/g, '')) > 0 ? (
-                                        <Text style={{ color: '#10B981', fontSize: 11, fontWeight: '600' }}>
-                                            ≈ {(parseFloat(amount.replace(/,/g, '')) / historicalNAV).toFixed(4)} Units
+                                        <Text style={{ color: '#10B981', fontSize: 11, fontWeight: '600', marginTop: 4 }}>
+                                            ≈ {(parseFloat(amount.replace(/,/g, '')) / (parseFloat(historicalNAV?.toString() || '0') || 1)).toFixed(4)} Units
                                         </Text>
                                     ) : null}
                                 </View>
@@ -722,13 +728,14 @@ const AddTransactionScreen = ({ navigation, route }: any) => {
                                 const acc = accounts.find(a => a.id === targetId);
                                 const mktNAV = acc?.currentNAV || 0;
                                 const amtVal = parseFloat(amount.replace(/,/g, '')) || 0;
+                                const parsedHistNAV = parseFloat(historicalNAV?.toString() || '0');
 
-                                if (acc?.type === 'MUTUAL_FUND' && mktNAV > 0 && amtVal > 0) {
-                                    const units = amtVal / historicalNAV;
+                                if (acc?.type === 'MUTUAL_FUND' && mktNAV > 0 && amtVal > 0 && parsedHistNAV > 0) {
+                                    const units = amtVal / parsedHistNAV;
                                     const currentVal = units * mktNAV;
                                     const diff = currentVal - amtVal;
                                     const isProfit = diff >= 0;
-                                    const pct = ((mktNAV - historicalNAV) / historicalNAV) * 100;
+                                    const pct = ((mktNAV - parsedHistNAV) / parsedHistNAV) * 100;
 
                                     return (
                                         <>
@@ -768,6 +775,7 @@ const AddTransactionScreen = ({ navigation, route }: any) => {
                     <Text style={styles.saveButtonText}>Add Transaction</Text>
                 </TouchableOpacity>
             </ScrollView>
+            </KeyboardAvoidingView>
         </ScreenWrapper>
     );
 };

@@ -182,11 +182,12 @@ export default function App() {
   useEffect(() => {
     const init = async () => {
       try {
-        await loadSettings();
-        initDatabase();
+        initDatabase(); // MUST be called first to create tables!
         await initArchiveDatabase();
+        loadSettings(); // Safely queries DB now
+        checkScheduledSync(); // Run initial scheduled sync check safely after loaded
       } catch (e) {
-        console.warn(e);
+        console.warn('Init Error:', e);
       } finally {
         // Hide splash screen after initialization
         setTimeout(() => {
@@ -206,9 +207,6 @@ export default function App() {
         checkScheduledSync();
       }
     });
-
-    // Also check on mount (after settings are loaded)
-    checkScheduledSync();
 
     return () => {
       subscription.remove();

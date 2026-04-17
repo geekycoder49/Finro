@@ -43,7 +43,7 @@ export const TransactionCard = ({ item, onPress }: TransactionCardProps) => {
                 <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginBottom: 0 }}>
                     <Text style={[styles.category, { color: themeColors.text }]}>
                         {(isTransfer || isPeople) ?
-                            (item.category && item.category !== 'Transfer' ? `Transfer (${item.category})` : 'Transfer') :
+                            (item.category && item.category !== 'Transfer' && item.category !== 'No Category' ? `Transfer (${item.category})` : 'Transfer') :
                             (item.category || 'No Category')}
                     </Text>
                     {item.isSystem === 1 && !isCGT ? (
